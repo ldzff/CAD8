@@ -2819,6 +2819,9 @@ namespace RobTeach.Views
         }
         private void CadCanvas_MouseMove(object sender, MouseEventArgs e)
         {
+            Point currentRawMousePos = e.GetPosition(CadCanvas);
+            AppLogger.Log($"CadCanvas_MouseMove: Fired. RawPos=({currentRawMousePos.X:F2},{currentRawMousePos.Y:F2}), IsPanning={_isPanning}, IsSelectingWithRect={isSelectingWithRect}", LogLevel.Debug);
+
             if (_isPanning)
             {
                 System.Windows.Point currentPanPoint = e.GetPosition(this); // Or CadCanvas.Parent as IInputElement
@@ -2830,17 +2833,20 @@ namespace RobTeach.Views
             }
             else if (isSelectingWithRect && selectionRectangleUI != null)
             {
-                System.Windows.Point currentMousePos = e.GetPosition(CadCanvas);
+                // Use currentRawMousePos already fetched at the beginning of the method.
+                AppLogger.Log($"CadCanvas_MouseMove (Marquee Update): selectionStartPoint=({selectionStartPoint.X:F2},{selectionStartPoint.Y:F2}), currentRawMousePos=({currentRawMousePos.X:F2},{currentRawMousePos.Y:F2})", LogLevel.Debug);
 
-                double x = Math.Min(selectionStartPoint.X, currentMousePos.X);
-                double y = Math.Min(selectionStartPoint.Y, currentMousePos.Y);
-                double width = Math.Abs(selectionStartPoint.X - currentMousePos.X);
-                double height = Math.Abs(selectionStartPoint.Y - currentMousePos.Y);
+                double x = Math.Min(selectionStartPoint.X, currentRawMousePos.X);
+                double y = Math.Min(selectionStartPoint.Y, currentRawMousePos.Y);
+                double width = Math.Abs(selectionStartPoint.X - currentRawMousePos.X);
+                double height = Math.Abs(selectionStartPoint.Y - currentRawMousePos.Y);
+                AppLogger.Log($"CadCanvas_MouseMove (Marquee Update): Calculated Rect Coords for UI - X={x:F2}, Y={y:F2}, W={width:F2}, H={height:F2}", LogLevel.Debug);
 
                 Canvas.SetLeft(selectionRectangleUI, x);
                 Canvas.SetTop(selectionRectangleUI, y);
                 selectionRectangleUI.Width = width;
                 selectionRectangleUI.Height = height;
+                AppLogger.Log($"CadCanvas_MouseMove (Marquee Update): selectionRectangleUI properties set.", LogLevel.Debug);
 
                 e.Handled = true;
             }
