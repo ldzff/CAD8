@@ -1736,10 +1736,11 @@ namespace RobTeach.Views
                 Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Retrieved DxfEntity: {dxfEntity?.GetType().Name}");
                 Trace.Flush();
 
-                Point clickPosCanvas = e.GetPosition(CadCanvas);
-                Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Click position on Canvas = {clickPosCanvas}");
-                Point clickPosDxf = _transformGroup.Inverse.Transform(clickPosCanvas);
-                Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Click position transformed to DXF Coords = {clickPosDxf}");
+                // Point clickPosCanvas = e.GetPosition(CadCanvas); // This functionality is now at the top of the method with clickPosCanvasLocal
+                // Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Click position on Canvas = {clickPosCanvas}");
+                // Point clickPosDxf = _transformGroup.Inverse.Transform(clickPosCanvas); // This is a re-declaration. clickPosDxf is already calculated at the top.
+                AppLogger.Log($"OnCadEntityClicked: (Legacy Debug) Using pre-calculated DxfPos=({clickPosDxf.X:F2},{clickPosDxf.Y:F2}) for further checks if any.", LogLevel.Debug);
+                // Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Click position transformed to DXF Coords = {clickPosDxf}"); // Covered by AppLogger above
 
                 Rect entityDxfBounds = GetDxfEntityRect(dxfEntity); // Helper method to be added
                 Debug.WriteLine($"[DEBUG] OnCadEntityClicked: DXF Entity Bounds = {entityDxfBounds}");
