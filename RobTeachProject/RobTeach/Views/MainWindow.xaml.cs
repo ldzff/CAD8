@@ -1441,7 +1441,7 @@ namespace RobTeach.Views
                         Height = circle.Radius * 2,
                         Stroke = DefaultStrokeBrush,
                         StrokeThickness = DefaultStrokeThickness,
-                        Fill = null
+                        Fill = Brushes.Transparent // Changed from null for better hit-testing
                     };
                     Canvas.SetLeft(wpfEllipse, circle.Center.X - circle.Radius);
                     Canvas.SetTop(wpfEllipse, circle.Center.Y - circle.Radius);
@@ -1480,7 +1480,8 @@ namespace RobTeach.Views
                     {
                         Data = pathGeometry,
                         Stroke = DefaultStrokeBrush,
-                        StrokeThickness = DefaultStrokeThickness
+                        StrokeThickness = DefaultStrokeThickness,
+                        Fill = Brushes.Transparent // Added for better hit-testing
                     };
                     shape = path;
                     AppLogger.Log($"Drawing Arc: Center({arc.Center.X:F2}, {arc.Center.Y:F2}), Radius={arc.Radius:F2}, Angles={arc.StartAngle:F2} to {arc.EndAngle:F2}", LogLevel.Info);
@@ -1698,9 +1699,26 @@ namespace RobTeach.Views
         /// </summary>
         private void OnCadEntityClicked(object sender, MouseButtonEventArgs e)
         {
-            Trace.WriteLine("++++ OnCadEntityClicked Fired ++++");
+            AppLogger.Log($"OnCadEntityClicked: Fired. Sender Type: {sender?.GetType().Name}", LogLevel.Debug);
+            if (sender is System.Windows.Shapes.Shape clickedShapeForLog)
+            {
+                string? tag = clickedShapeForLog.Tag as string;
+                AppLogger.Log($"OnCadEntityClicked: Clicked shape Tag: {tag ?? "N/A"}", LogLevel.Debug);
+            }
+
+            Point clickPosCanvas = e.GetPosition(CadCanvas);
+            Point clickPosDxf = Point.InvalidatePoint;
+            if (_transformGroup != null && _transformGroup.Inverse != null)
+            {
+                clickPosDxf = _transformGroup.Inverse.Transform(clickPosCanvas);
+            }
+            AppLogger.Log($"OnCadEntityClicked: RawPos=({clickPosCanvas.X:F2},{clickPosCanvas.Y:F2}), DxfPos=({clickPosDxf.X:F2},{clickPosDxf.Y:F2})", LogLevel.Debug);
+
+            // Original Trace.WriteLine and Debug.WriteLine can be kept or removed if AppLogger is sufficient
+            Trace.WriteLine("++++ OnCadEntityClicked Fired (Legacy Trace) ++++");
             Trace.Flush();
-            Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Sender is {sender?.GetType().Name}");
+            // Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Sender is {sender?.GetType().Name}"); // Covered by AppLogger
+
             Trajectory trajectoryToSelect = null; // Declare at wider scope
 
             // Detailed check for the main condition
@@ -2737,9 +2755,23 @@ namespace RobTeach.Views
 
         private void CadCanvas_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (e.MiddleButton == MouseButtonState.Pressed ||
-                (e.LeftButton == MouseButtonState.Pressed && Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl)) ) // More robust Ctrl check
+            Point clickPosCanvas = e.GetPosition(CadCanvas);
+            Point clickPosDxf = Point.InvalidatePoint; // Default to an invalid point
+
+            if (_transformGroup != null && _transformGroup.Inverse != null) // Ensure inverse is available
             {
+                clickPosDxf = _transformGroup.Inverse.Transform(clickPosCanvas);
+            }
+
+            AppLogger.Log($"CadCanvas_MouseDown: RawPos=({clickPosCanvas.X:F2},{clickPosCanvas.Y:F2}), DxfPos=({clickPosDxf.X:F2},{clickPosDxf.Y:F2}), Source={e.Source?.GetType().Name}, Button={e.ChangedButton}", LogLevel.Debug);
+
+            bool isCtrlPressed = Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
+            AppLogger.Log($"CadCanvas_MouseDown: MiddleButtonState={e.MiddleButton}, LeftButtonState={e.LeftButton}, IsCtrlPressed={isCtrlPressed}", LogLevel.Debug);
+
+            if (e.MiddleButton == MouseButtonState.Pressed ||
+                (e.LeftButton == MouseButtonState.Pressed && isCtrlPressed) )
+            {
+                AppLogger.Log("CadCanvas_MouseDown: Pan mode initiated.", LogLevel.Debug);
                 _isPanning = true;
                 _panStartPoint = e.GetPosition(this); // Pan relative to MainWindow for this example, or CadCanvas.Parent
                 CadCanvas.CaptureMouse();
@@ -2749,8 +2781,9 @@ namespace RobTeach.Views
             // Check e.Source to ensure the click originated on the Canvas itself, not on a child like a DxfEntity shape
             else if (e.LeftButton == MouseButtonState.Pressed && e.Source == CadCanvas)
             {
+                AppLogger.Log("CadCanvas_MouseDown: Marquee selection mode initiated. Click source is CadCanvas.", LogLevel.Debug);
                 isSelectingWithRect = true;
-                selectionStartPoint = e.GetPosition(CadCanvas);
+                selectionStartPoint = clickPosCanvas; // Use already fetched clickPosCanvas
 
                 if (selectionRectangleUI != null && CadCanvas.Children.Contains(selectionRectangleUI))
                 {
