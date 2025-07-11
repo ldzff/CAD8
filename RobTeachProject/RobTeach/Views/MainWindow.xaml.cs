@@ -1600,39 +1600,52 @@ namespace RobTeach.Views
             double canvasWidth = CadCanvas.ActualWidth;
             double canvasHeight = CadCanvas.ActualHeight;
 
-            AppLogger.Log("=== PerformFitToView Started ===", LogLevel.Info);
-            AppLogger.Log($"Canvas Size: {canvasWidth:F2} x {canvasHeight:F2}", LogLevel.Info);
-            AppLogger.Log($"DXF Bounds: X({_dxfBoundingBox.Left:F2} to {_dxfBoundingBox.Right:F2}), Y({_dxfBoundingBox.Bottom:F2} to {_dxfBoundingBox.Top:F2})", LogLevel.Info);
+            AppLogger.Log("PerformFitToView: Method started.", LogLevel.Info);
+            AppLogger.Log($"PerformFitToView: Canvas ActualWidth={canvasWidth:F2}, ActualHeight={canvasHeight:F2}", LogLevel.Debug);
+            AppLogger.Log($"PerformFitToView: DXF BoundingBox Input (X,Y,W,H): ({_dxfBoundingBox.X:F2}, {_dxfBoundingBox.Y:F2}, {_dxfBoundingBox.Width:F2}, {_dxfBoundingBox.Height:F2})", LogLevel.Debug);
 
+            double scale;
             // Calculate scale to fit
-            double scaleX = canvasWidth / _dxfBoundingBox.Width;
-            double scaleY = canvasHeight / _dxfBoundingBox.Height;
-            double scale = Math.Min(scaleX, scaleY);
+            if (_dxfBoundingBox.Width <= 1e-6 || _dxfBoundingBox.Height <= 1e-6) // Check for degenerate bounding box
+            {
+                AppLogger.Log("PerformFitToView: Bounding box width or height is zero or very small. Setting scale to 1.0.", LogLevel.Warning);
+                scale = 1.0; // Default scale for degenerate box (e.g. single point)
+            }
+            else
+            {
+                double scaleX = canvasWidth / _dxfBoundingBox.Width;
+                double scaleY = canvasHeight / _dxfBoundingBox.Height;
+                scale = Math.Min(scaleX, scaleY);
+                AppLogger.Log($"PerformFitToView: Scale Calculation - scaleX_raw={scaleX:F4}, scaleY_raw={scaleY:F4}, chosen_scale={scale:F4}", LogLevel.Debug);
+            }
+             // Prevent scale from being excessively small or zero, which can cause issues.
+            if (scale < 0.000001)
+            {
+                AppLogger.Log($"PerformFitToView: Calculated scale {scale:F6} is very small. Clamping to 0.000001.", LogLevel.Warning);
+                scale = 0.000001;
+            }
 
-            AppLogger.Log("Scale Calculation:", LogLevel.Info);
-            AppLogger.Log($"  ScaleX (from width): {scaleX:F4}", LogLevel.Info);
-            AppLogger.Log($"  ScaleY (from height): {scaleY:F4}", LogLevel.Info);
-            AppLogger.Log($"  Final scale: {scale:F4}", LogLevel.Info);
 
             double scaledContentWidth = _dxfBoundingBox.Width * scale;
             double scaledContentHeight = _dxfBoundingBox.Height * scale;
-            AppLogger.Log($"Scaled content size: {scaledContentWidth:F2} x {scaledContentHeight:F2}", LogLevel.Info);
+            AppLogger.Log($"PerformFitToView: Scaled DXF content size (W,H): ({scaledContentWidth:F2}, {scaledContentHeight:F2})", LogLevel.Debug);
 
             // Calculate translation to center
-            double translateX = (canvasWidth - scaledContentWidth) / 2 - (_dxfBoundingBox.Left * scale);
+            // _dxfBoundingBox.X is minX_dxf
+            // _dxfBoundingBox.Y is minY_dxf
+            double translateX = (canvasWidth - scaledContentWidth) / 2.0 - (_dxfBoundingBox.X * scale);
             
-            // Fix: Adjust Y translation calculation
-            // First, calculate the center point of the canvas and the scaled content
-            double canvasCenterY = canvasHeight / 2;
-            double contentCenterY = (_dxfBoundingBox.Top + _dxfBoundingBox.Bottom) / 2;
-            // Then calculate the translation needed to align the centers
-            double translateY = canvasCenterY + (contentCenterY * scale);
+            double canvasCenterY = canvasHeight / 2.0;
+            // contentCenterY_dxf is the Y-coordinate of the center of the DXF bounding box, in DXF Y-up coordinates.
+            double contentCenterY_dxf = _dxfBoundingBox.Y + (_dxfBoundingBox.Height / 2.0);
+            // translateY is calculated so that contentCenterY_dxf, when transformed, maps to canvasCenterY.
+            // y_screen = y_dxf * (-scale) + translateY
+            // canvasCenterY = contentCenterY_dxf * (-scale) + translateY
+            // => translateY = canvasCenterY + (contentCenterY_dxf * scale)
+            double translateY = canvasCenterY + (contentCenterY_dxf * scale);
 
-            AppLogger.Log("Translation Calculation:", LogLevel.Info);
-            AppLogger.Log($"  TranslateX = {translateX:F2}", LogLevel.Info);
-            AppLogger.Log($"  TranslateY = {translateY:F2}", LogLevel.Info);
-            AppLogger.Log($"  Canvas Center Y = {canvasCenterY:F2}", LogLevel.Info);
-            AppLogger.Log($"  Content Center Y = {contentCenterY:F2}", LogLevel.Info);
+            AppLogger.Log($"PerformFitToView: Translation Calculation - canvasCenterY={canvasCenterY:F2}, contentCenterY_dxf={contentCenterY_dxf:F2}", LogLevel.Debug);
+            AppLogger.Log($"PerformFitToView: Translation Calculation - translateX={translateX:F2}, translateY={translateY:F2}", LogLevel.Debug);
 
             // Create and apply transform
             var transformGroup = new TransformGroup();
@@ -2486,6 +2499,7 @@ namespace RobTeach.Views
                 AppLogger.Log("GetDxfBoundingBox: dxfDoc is null. Returning Rect.Empty.", LogLevel.Warning);
                 return Rect.Empty;
             }
+            AppLogger.Log("GetDxfBoundingBox: Method started.", LogLevel.Info); // Moved start log here
 
             double minX = double.MaxValue, minY = double.MaxValue;
             double maxX = double.MinValue, maxY = double.MinValue;
@@ -2495,48 +2509,62 @@ namespace RobTeach.Views
             if (dxfDoc.Entities != null && dxfDoc.Entities.Any())
             {
                 AppLogger.Log($"GetDxfBoundingBox: Processing {dxfDoc.Entities.Count()} entities.", LogLevel.Info);
-
+                int entityIndex = 0;
                 foreach (var entity in dxfDoc.Entities)
                 {
-                    if (entity == null) continue;
-
-                    var bounds = CalculateEntityBoundsSimple(entity);
+                    if (entity == null)
+                    {
+                        AppLogger.Log($"GetDxfBoundingBox: Entity at index {entityIndex} is null. Skipping.", LogLevel.Debug);
+                        entityIndex++;
+                        continue;
+                    }
+                    AppLogger.Log($"GetDxfBoundingBox: Entity {entityIndex} - Type: {entity.GetType().Name}, Layer: {entity.Layer}, Color: {entity.Color}", LogLevel.Debug);
+                    var bounds = CalculateEntityBoundsSimple(entity); // CalculateEntityBoundsSimple already logs entity details
                     if (!bounds.IsEmpty)
                     {
+                        AppLogger.Log($"GetDxfBoundingBox: Entity {entityIndex} - Calculated Bounds (X,Y,W,H): ({bounds.X:F2}, {bounds.Y:F2}, {bounds.Width:F2}, {bounds.Height:F2})", LogLevel.Debug);
                         minX = Math.Min(minX, bounds.X);
                         minY = Math.Min(minY, bounds.Y);
                         maxX = Math.Max(maxX, bounds.X + bounds.Width);
                         maxY = Math.Max(maxY, bounds.Y + bounds.Height);
                         hasValidBounds = true;
-                        AppLogger.Log($"Entity bounds: X={bounds.X:F2}, Y={bounds.Y:F2}, W={bounds.Width:F2}, H={bounds.Height:F2}", LogLevel.Info);
+                        AppLogger.Log($"GetDxfBoundingBox: Entity {entityIndex} - Current Aggregated (minX,minY,maxX,maxY): ({minX:F2}, {minY:F2}, {maxX:F2}, {maxY:F2})", LogLevel.Debug);
                     }
+                    else
+                    {
+                        AppLogger.Log($"GetDxfBoundingBox: Entity {entityIndex} - Returned empty bounds. Not included in aggregation.", LogLevel.Debug);
+                    }
+                    entityIndex++;
                 }
             }
 
             if (!hasValidBounds)
             {
-                AppLogger.Log("GetDxfBoundingBox: No valid bounds found. Returning Rect.Empty.", LogLevel.Warning);
+                AppLogger.Log("GetDxfBoundingBox: No valid entity bounds found after iterating all entities. Returning Rect.Empty.", LogLevel.Warning);
                 return Rect.Empty;
             }
 
-            // Always include the origin (0,0) in the bounding box
-            minX = Math.Min(minX, 0);
-            minY = Math.Min(minY, 0);
-            maxX = Math.Max(maxX, 0);
-            maxY = Math.Max(maxY, 0);
+            // The following block forcing inclusion of origin (0,0) has been removed
+            // as it leads to incorrect bounding boxes for drawings not centered at or spanning the origin.
+            // minX = Math.Min(minX, 0);
+            // minY = Math.Min(minY, 0);
+            // maxX = Math.Max(maxX, 0);
+            // maxY = Math.Max(maxY, 0);
 
             var result = new Rect(minX, minY, maxX - minX, maxY - minY);
-            AppLogger.Log($"Final bounding box: X={result.X:F2}, Y={result.Y:F2}, W={result.Width:F2}, H={result.Height:F2}", LogLevel.Info);
+            AppLogger.Log($"GetDxfBoundingBox: Final calculated bounding box (minX,minY,width,height): ({result.X:F2}, {result.Y:F2}, {result.Width:F2}, {result.Height:F2})", LogLevel.Info);
             return result;
         }
 
         private Rect CalculateEntityBoundsSimple(DxfEntity entity)
         {
-            AppLogger.Log($"CalculateEntityBoundsSimple: Processing entity of type {entity.GetType().Name}", LogLevel.Info);
+            // This method is called per entity, so keeping its logging concise or at Debug level.
+            // The caller (GetDxfBoundingBox) will log the entity index and type.
+            // AppLogger.Log($"CalculateEntityBoundsSimple: Processing entity of type {entity.GetType().Name}", LogLevel.Debug);
             
             if (entity is DxfLine line)
             {
-                AppLogger.Log($"Line: ({line.P1.X:F2}, {line.P1.Y:F2}) to ({line.P2.X:F2}, {line.P2.Y:F2})", LogLevel.Info);
+                AppLogger.Log($"CalculateEntityBoundsSimple (Line): P1=({line.P1.X:F2},{line.P1.Y:F2},{line.P1.Z:F2}), P2=({line.P2.X:F2},{line.P2.Y:F2},{line.P2.Z:F2})", LogLevel.Debug);
                 double minX = Math.Min(line.P1.X, line.P2.X);
                 double minY = Math.Min(line.P1.Y, line.P2.Y);
                 double maxX = Math.Max(line.P1.X, line.P2.X);
@@ -2545,7 +2573,7 @@ namespace RobTeach.Views
             }
             else if (entity is DxfCircle circle)
             {
-                AppLogger.Log($"Circle: Center({circle.Center.X:F2}, {circle.Center.Y:F2}), Radius:{circle.Radius:F2}", LogLevel.Info);
+                AppLogger.Log($"CalculateEntityBoundsSimple (Circle): Center=({circle.Center.X:F2},{circle.Center.Y:F2},{circle.Center.Z:F2}), Radius={circle.Radius:F2}, Normal={circle.Normal}", LogLevel.Debug);
                 double minX = circle.Center.X - circle.Radius;
                 double minY = circle.Center.Y - circle.Radius;
                 double width = circle.Radius * 2;
@@ -2554,7 +2582,7 @@ namespace RobTeach.Views
             }
             else if (entity is DxfArc arc)
             {
-                AppLogger.Log($"Arc: Center({arc.Center.X:F2}, {arc.Center.Y:F2}), Radius:{arc.Radius:F2}, Start:{arc.StartAngle:F2}, End:{arc.EndAngle:F2}", LogLevel.Info);
+                AppLogger.Log($"CalculateEntityBoundsSimple (Arc): Center=({arc.Center.X:F2},{arc.Center.Y:F2},{arc.Center.Z:F2}), Radius={arc.Radius:F2}, StartAngle={arc.StartAngle:F2}, EndAngle={arc.EndAngle:F2}, Normal={arc.Normal}", LogLevel.Debug);
                 // Calculate start and end points
                 var startPoint = new Point(
                     arc.Center.X + arc.Radius * Math.Cos(arc.StartAngle * Math.PI / 180.0),
@@ -2593,7 +2621,10 @@ namespace RobTeach.Views
             }
             else if (entity is DxfLwPolyline lwPolyline && lwPolyline.Vertices.Any())
             {
-                AppLogger.Log($"LwPolyline: {lwPolyline.Vertices.Count} vertices, Closed:{lwPolyline.IsClosed}", LogLevel.Info);
+                AppLogger.Log($"CalculateEntityBoundsSimple (LwPolyline): Vertices={lwPolyline.Vertices.Count}, IsClosed={lwPolyline.IsClosed}, Elevation={lwPolyline.Elevation}", LogLevel.Debug);
+                // Note: This LwPolyline bounds calculation does not account for bulge (arcs).
+                // For accurate bounds, each segment (line or arc from bulge) would need to be calculated.
+                // This is a known simplification for now.
                 double minX = lwPolyline.Vertices[0].X;
                 double minY = lwPolyline.Vertices[0].Y;
                 double maxX = minX;
@@ -2606,16 +2637,19 @@ namespace RobTeach.Views
                     maxX = Math.Max(maxX, vertex.X);
                     maxY = Math.Max(maxY, vertex.Y);
                 }
+                // Add polyline elevation to Y coordinates for bounding box
+                minY += lwPolyline.Elevation;
+                maxY += lwPolyline.Elevation;
 
                 return new Rect(minX, minY, maxX - minX, maxY - minY);
             }
             else if (entity is DxfInsert insert)
             {
-                AppLogger.Log($"Insert: Name={insert.Name}, Location=({insert.Location.X:F2}, {insert.Location.Y:F2}), Scale=({insert.XScaleFactor:F2}, {insert.YScaleFactor:F2}), Rotation={insert.Rotation:F2}", LogLevel.Info);
-                return GetDxfInsertBounds(insert);
+                AppLogger.Log($"CalculateEntityBoundsSimple (Insert): Name='{insert.Name}', Location=({insert.Location.X:F2},{insert.Location.Y:F2},{insert.Location.Z:F2}), XScale={insert.XScaleFactor:F2}, YScale={insert.YScaleFactor:F2}, Rotation={insert.Rotation:F2}", LogLevel.Debug);
+                return GetDxfInsertBounds(insert); // GetDxfInsertBounds has its own logging
             }
 
-            AppLogger.Log($"Unsupported entity type: {entity.GetType().Name}", LogLevel.Warning);
+            AppLogger.Log($"CalculateEntityBoundsSimple: Unsupported entity type '{entity.GetType().Name}' for bounding box calculation. Returning Empty.", LogLevel.Warning);
             return Rect.Empty;
         }
 
@@ -3887,29 +3921,43 @@ namespace RobTeach.Views
 
         private Rect GetDxfInsertBounds(DxfInsert insert)
         {
+            AppLogger.Log($"GetDxfInsertBounds: Processing Insert Name='{insert.Name}'.", LogLevel.Debug);
             if (_currentDxfDocument == null)
             {
-                AppLogger.Log($"GetDxfInsertBounds: DxfInsert '{insert.Name}' - _currentDxfDocument is null. Cannot resolve block. Using insertion point.", LogLevel.Warning);
+                AppLogger.Log($"GetDxfInsertBounds: Insert '{insert.Name}' - _currentDxfDocument is null. Cannot resolve block. Bounds based on insertion point only.", LogLevel.Warning);
                 return new Rect(insert.Location.X, insert.Location.Y, 0, 0);
             }
 
             DxfBlock? block = _currentDxfDocument.Blocks.FirstOrDefault(b => b.Name == insert.Name);
-            if (block == null || !block.Entities.Any())
+            if (block == null)
             {
-                AppLogger.Log($"GetDxfInsertBounds: DxfInsert '{insert.Name}' - Block not found or empty. Using insertion point.", LogLevel.Debug);
+                AppLogger.Log($"GetDxfInsertBounds: Insert '{insert.Name}' - Block with this name not found in DXF. Bounds based on insertion point only.", LogLevel.Warning);
                 return new Rect(insert.Location.X, insert.Location.Y, 0, 0);
             }
+            if (!block.Entities.Any())
+            {
+                 AppLogger.Log($"GetDxfInsertBounds: Insert '{insert.Name}' - Block found but contains no entities. Bounds based on insertion point only.", LogLevel.Debug);
+                return new Rect(insert.Location.X, insert.Location.Y, 0, 0);
+            }
+            AppLogger.Log($"GetDxfInsertBounds: Insert '{insert.Name}' - Block found with {block.Entities.Count()} entities. Calculating block content bounds.", LogLevel.Debug);
 
             Rect blockBounds = Rect.Empty;
             bool hasValidBounds = false;
-
+            int entityInBlockIndex = 0;
             foreach (DxfEntity entityInBlock in block.Entities)
             {
-                if (entityInBlock == null) continue;
-
+                if (entityInBlock == null)
+                {
+                    AppLogger.Log($"GetDxfInsertBounds: Insert '{insert.Name}', Block Entity {entityInBlockIndex}: Null entity. Skipping.", LogLevel.Debug);
+                    entityInBlockIndex++;
+                    continue;
+                }
+                // Recursive call to CalculateEntityBoundsSimple for entities within the block
+                // Log within CalculateEntityBoundsSimple will detail the block entity
                 var entityBounds = CalculateEntityBoundsSimple(entityInBlock);
                 if (!entityBounds.IsEmpty)
                 {
+                     AppLogger.Log($"GetDxfInsertBounds: Insert '{insert.Name}', Block Entity {entityInBlockIndex} ({entityInBlock.GetType().Name}): Bounds ({entityBounds.X:F2},{entityBounds.Y:F2}, {entityBounds.Width:F2},{entityBounds.Height:F2})", LogLevel.Debug);
                     if (!hasValidBounds)
                     {
                         blockBounds = entityBounds;
@@ -3919,17 +3967,24 @@ namespace RobTeach.Views
                     {
                         blockBounds.Union(entityBounds);
                     }
+                    AppLogger.Log($"GetDxfInsertBounds: Insert '{insert.Name}', Block Entity {entityInBlockIndex}: Aggregated block bounds now ({blockBounds.X:F2},{blockBounds.Y:F2}, {blockBounds.Width:F2},{blockBounds.Height:F2})", LogLevel.Debug);
+                } else {
+                    AppLogger.Log($"GetDxfInsertBounds: Insert '{insert.Name}', Block Entity {entityInBlockIndex} ({entityInBlock.GetType().Name}): Returned empty bounds.", LogLevel.Debug);
                 }
+                entityInBlockIndex++;
             }
 
             if (!hasValidBounds)
             {
-                AppLogger.Log($"GetDxfInsertBounds: DxfInsert '{insert.Name}' - No valid entity bounds within block. Using insertion point.", LogLevel.Debug);
+                AppLogger.Log($"GetDxfInsertBounds: Insert '{insert.Name}' - No valid entity bounds found within block content. Bounds based on insertion point only.", LogLevel.Debug);
                 return new Rect(insert.Location.X, insert.Location.Y, 0, 0);
             }
+            AppLogger.Log($"GetDxfInsertBounds: Insert '{insert.Name}' - Final untransformed block content bounds: ({blockBounds.X:F2},{blockBounds.Y:F2}, {blockBounds.Width:F2},{blockBounds.Height:F2})", LogLevel.Debug);
 
             // Transform the block bounds according to the insert's properties
-            return GetTransformedBounds(blockBounds, insert.Location, insert.XScaleFactor, insert.YScaleFactor, insert.Rotation);
+            var transformedBounds = GetTransformedBounds(blockBounds, insert.Location, insert.XScaleFactor, insert.YScaleFactor, insert.Rotation);
+            AppLogger.Log($"GetDxfInsertBounds: Insert '{insert.Name}' - Final transformed bounds for insert: ({transformedBounds.X:F2},{transformedBounds.Y:F2}, {transformedBounds.Width:F2},{transformedBounds.Height:F2})", LogLevel.Debug);
+            return transformedBounds;
         }
 
         private void UpdateShapesOnCanvas(List<System.Windows.Shapes.Shape?> shapes)
