@@ -2853,8 +2853,14 @@ namespace RobTeach.Views
         }
         private void CadCanvas_MouseUp(object sender, MouseButtonEventArgs e)
         {
+            Point rawMousePos = e.GetPosition(CadCanvas);
+            Point dxfMousePos = (_transformGroup?.Inverse != null) ? _transformGroup.Inverse.Transform(rawMousePos) : new Point(double.NaN, double.NaN);
+            AppLogger.Log($"CadCanvas_MouseUp: Fired. RawPos=({rawMousePos.X:F2},{rawMousePos.Y:F2}), DxfPos=({dxfMousePos.X:F2},{dxfMousePos.Y:F2})", LogLevel.Debug);
+            AppLogger.Log($"CadCanvas_MouseUp: Initial states - _isPanning={_isPanning}, isSelectingWithRect={isSelectingWithRect}", LogLevel.Debug);
+
             if (_isPanning)
             {
+                AppLogger.Log("CadCanvas_MouseUp: Pan mode was active, completing pan.", LogLevel.Debug);
                 _isPanning = false;
                 CadCanvas.ReleaseMouseCapture();
                 StatusTextBlock.Text = "Pan complete.";
@@ -2867,6 +2873,7 @@ namespace RobTeach.Views
 
                 if (selectionRectangleUI == null) // Should not happen if isSelectingWithRect was true
                 {
+                    AppLogger.Log("CadCanvas_MouseUp (Marquee): selectionRectangleUI is null, though isSelectingWithRect was true. Aborting marquee.", LogLevel.Warning);
                     e.Handled = true;
                     return;
                 }
@@ -2876,19 +2883,22 @@ namespace RobTeach.Views
                     Canvas.GetTop(selectionRectangleUI),
                     selectionRectangleUI.Width,
                     selectionRectangleUI.Height);
+                AppLogger.Log($"CadCanvas_MouseUp (Marquee): finalSelectionRect (UI Coords before removal) = X:{finalSelectionRect.X:F2}, Y:{finalSelectionRect.Y:F2}, W:{finalSelectionRect.Width:F2}, H:{finalSelectionRect.Height:F2}", LogLevel.Debug);
 
                 // Remove the visual rectangle from canvas
                 CadCanvas.Children.Remove(selectionRectangleUI);
                 selectionRectangleUI = null;
+                AppLogger.Log($"CadCanvas_MouseUp (Marquee): selectionRectangleUI removed from canvas and nulled.", LogLevel.Debug);
 
                 StatusTextBlock.Text = "Selection processed."; // Or clear
-                Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): finalSelectionRect (Canvas UI Coords) = {finalSelectionRect}");
-                Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): _scaleTransform=({_scaleTransform.ScaleX},{_scaleTransform.ScaleY}), _translateTransform=({_translateTransform.X},{_translateTransform.Y})");
+                // Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): finalSelectionRect (Canvas UI Coords) = {finalSelectionRect}"); // Covered by AppLogger
+                // Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): _scaleTransform=({_scaleTransform.ScaleX},{_scaleTransform.ScaleY}), _translateTransform=({_translateTransform.X},{_translateTransform.Y})");
 
                 // Small drag check (if it was more of a click)
                 const double clickThreshold = 5.0;
                 if (finalSelectionRect.Width < clickThreshold && finalSelectionRect.Height < clickThreshold)
                 {
+                    AppLogger.Log($"CadCanvas_MouseUp (Marquee): Drag was below click threshold (W:{finalSelectionRect.Width:F2}, H:{finalSelectionRect.Height:F2}). No marquee selection performed.", LogLevel.Debug);
                     e.Handled = true; // Event handled, but no marquee selection performed
                     return;
                 }
@@ -2934,7 +2944,8 @@ namespace RobTeach.Views
                 // For now, let the result callback handle it.
                 VisualTreeHelper.HitTest(CadCanvas, null, hitTestCallback, parameters);
 
-                Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee HitTest): Found {marqueeHitEntities.Count} entities in marquee.");
+                AppLogger.Log($"CadCanvas_MouseUp (Marquee HitTest): VisualTreeHelper.HitTest completed. Found {marqueeHitEntities.Count} entities intersecting marquee rectangle.", LogLevel.Debug);
+                // Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee HitTest): Found {marqueeHitEntities.Count} entities in marquee."); // Covered by AppLogger
 
                 // Removed outer declaration and population of newPassTrajectories.
                 // This logic is now handled within the 'else' block for Replace Mode.
