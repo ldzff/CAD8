@@ -8,8 +8,22 @@ using RobTeach.Utils; // Added for GeometryUtils
 
 namespace RobTeach.Services
 {
+    /// <summary>
+    /// Custom JSON converter for the <see cref="Trajectory"/> class.
+    /// This converter handles the serialization and deserialization of Trajectory objects,
+    /// including the reconstruction of the `OriginalDxfEntity` property based on
+    /// the persisted geometric properties and primitive type.
+    /// </summary>
     public class TrajectoryJsonConverter : JsonConverter<Trajectory>
     {
+        /// <summary>
+        /// Reads and converts the JSON to type <see cref="Trajectory"/>.
+        /// It deserializes common properties and then, based on `PrimitiveType`,
+        /// deserializes specific geometric properties (e.g., LineStartPoint/EndPoint, ArcPoint1/2/3).
+        /// Crucially, it attempts to reconstruct the `OriginalDxfEntity` (e.g., DxfLine, DxfArc, DxfCircle)
+        /// from these geometric properties so it can be used for reconciliation or display,
+        /// even if the original DXF file isn't loaded.
+        /// </summary>
         public override Trajectory Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType != JsonTokenType.StartObject)
@@ -145,25 +159,16 @@ namespace RobTeach.Services
 
                 // After all properties of Trajectory are deserialized,
                 // create and assign OriginalDxfEntity based on these properties.
+                // This allows the Trajectory object to have a DxfEntity representation even if loaded solely from JSON.
+                // This is useful for geometric calculations or reconciliation with a subsequently loaded DXF file.
                 switch (trajectory.PrimitiveType)
                 {
                     case "Line":
                         trajectory.OriginalDxfEntity = new DxfLine(trajectory.LineStartPoint, trajectory.LineEndPoint);
                         break;
                     case "Arc":
-                        // Cannot construct DxfArc from trajectory.ArcCenter etc. as they were removed.
-                        // OriginalDxfEntity for Arc will be null here. It will be populated later if this trajectory
-                        // corresponds to a DxfArc selected by the user (in OnCadEntityClicked) which uses the new 3-point model,
-                        // or during reconciliation if the JSON is updated to store 3-point data.
-                        // For now, this fixes the compile error.
-                        // UPDATE: Attempt to reconstruct DxfArc if points are available
-                        // This is a simplified reconstruction. A robust one would calculate center, radius, angles from 3 points.
-                        // For now, we'll leave OriginalDxfEntity null here, as reconciliation is the primary way to get the live DxfArc.
-                        // If the 3 points were always guaranteed to form a valid arc that could be easily converted back to
-                        // DxfArc parameters (center, radius, start/end angle), we could do it here.
-                        // However, that calculation is non-trivial and might be better handled by specific geometric services if needed
-                        // outside of reconciliation with an existing DXF document.
-                        // UPDATE: Attempt to reconstruct DxfArc using GeometryUtils
+                        // Attempt to reconstruct DxfArc from ArcPoint1, ArcPoint2, ArcPoint3 using GeometryUtils.
+                        // This provides a DxfArc representation based on the 3-point definition.
                         if (trajectory.ArcPoint1 != null && trajectory.ArcPoint2 != null && trajectory.ArcPoint3 != null)
                         {
                             var arcParams = GeometryUtils.CalculateArcParametersFromThreePoints(
@@ -176,18 +181,22 @@ namespace RobTeach.Services
                                 trajectory.OriginalDxfEntity = new DxfArc(
                                     arcParams.Value.Center,
                                     arcParams.Value.Radius,
-                                    arcParams.Value.StartAngle,
-                                    arcParams.Value.EndAngle)
+                                    arcParams.Value.StartAngle, // CCW start angle
+                                    arcParams.Value.EndAngle)   // CCW end angle
                                 {
                                     Normal = arcParams.Value.Normal
                                 };
                             }
+                            else
+                            {
+                                // If parameters can't be calculated (e.g., collinear points), OriginalDxfEntity remains null.
+                                System.Diagnostics.Debug.WriteLine($"[TrajectoryJsonConverter] Read: Could not reconstruct DxfArc for trajectory {trajectory.OriginalEntityHandle} from 3 points.");
+                            }
                         }
                         break;
                     case "Circle":
-                        // Reconstruct DxfCircle using the deserialized OriginalCircleCenter, OriginalCircleRadius, OriginalCircleNormal
-                        // These are considered more authoritative for reconstructing the entity than recalculating from 3 points,
-                        // especially to match the entity parsed directly from DXF during reconciliation.
+                        // Reconstruct DxfCircle using the deserialized OriginalCircleCenter, OriginalCircleRadius, OriginalCircleNormal.
+                        // These are stored explicitly for Circles to ensure robust reconstruction matching the original DXF entity.
                         if (trajectory.OriginalCircleRadius > 0) // Basic validation
                         {
                             trajectory.OriginalDxfEntity = new DxfCircle(
@@ -200,33 +209,17 @@ namespace RobTeach.Services
                         }
                         else
                         {
-                            // Fallback or error if original parameters are invalid/missing,
-                            // though they should always be present if saved correctly.
-                            // One could attempt to use the 3 points here as a fallback, but it might lead to the same reconciliation issues.
                             System.Diagnostics.Debug.WriteLine($"[TrajectoryJsonConverter] Read: Could not reconstruct DxfCircle for trajectory {trajectory.OriginalEntityHandle} as OriginalCircleRadius is invalid or not set. OriginalDxfEntity will be null.");
                         }
                         break;
-                    case "LwPolyline": // Assuming LwPolyline data would be deserialized onto Trajectory if supported
-                        // This part needs LwPolyline specific properties on Trajectory object if we want to reconstruct it
-                        // For now, if PrimitiveType is LwPolyline, OriginalDxfEntity might remain null if not handled here
-                        // or if Trajectory class doesn't store LwPolyline vertices directly.
-                        // Based on current Trajectory model, it doesn't seem to store LwPolyline vertices.
-                        // So, for LwPolyline, OriginalDxfEntity reconstruction from Trajectory fields is not directly possible yet.
-                        // This will be a limitation until Trajectory model and this converter are extended for LwPolyline geo data.
-                        // For now, we'll leave it potentially null for LwPolyline from config if not handled by specific fields.
-                        // The reconciliation logic would then have to be very robust or have a fallback.
-                        // However, the goal is to have *some* DxfEntity.
-                        // Let's assume for now that if it's an LwPolyline, its specific points/bulges are not on Trajectory object directly.
-                        // This part of the plan (serializing LwPolyline specific data) needs to be addressed if LwPolyline highlighting from config is crucial.
-                        // For this step, we are focusing on Line, Arc, Circle for which Trajectory has direct fields.
-                        if (trajectory.OriginalDxfEntity == null && !string.IsNullOrEmpty(trajectory.EntityType)) // Check EntityType too
-                        {
-                             // Attempt a placeholder if it's an LwPolyline and we have no specific data on Trajectory model
-                             // This won't be geometrically accurate for reconciliation but makes it non-null.
-                             if (trajectory.EntityType == typeof(DxfLwPolyline).Name) {
-                                 // trajectory.OriginalDxfEntity = new DxfLwPolyline(); // Placeholder, not useful for matching.
-                                 // For now, we can't reconstruct LwPolyline from current Trajectory fields.
-                             }
+                    case "LwPolyline":
+                        // Currently, the Trajectory model does not store detailed geometric data (vertices, bulges) for LwPolylines.
+                        // Therefore, OriginalDxfEntity for LwPolylines cannot be reconstructed from Trajectory properties alone.
+                        // It would be populated if this trajectory is later matched with a live DxfLwPolyline entity.
+                        // A placeholder DxfLwPolyline could be created if EntityType indicates LwPolyline, but it would lack geometry.
+                        if (trajectory.OriginalDxfEntity == null && trajectory.EntityType == typeof(DxfLwPolyline).Name) {
+                             // trajectory.OriginalDxfEntity = new DxfLwPolyline(); // Example placeholder, but not geometrically useful.
+                             System.Diagnostics.Debug.WriteLine($"[TrajectoryJsonConverter] Read: LwPolyline trajectory {trajectory.OriginalEntityHandle} - OriginalDxfEntity not reconstructed from JSON properties.");
                         }
                         break;
                 }
@@ -234,6 +227,11 @@ namespace RobTeach.Services
             }
         }
 
+        /// <summary>
+        /// Writes a <see cref="Trajectory"/> object as JSON.
+        /// Serializes common properties and specific geometric properties based on `PrimitiveType`.
+        /// The `OriginalDxfEntity` itself is not serialized (it's marked `JsonIgnore` on the model).
+        /// </summary>
         public override void Write(Utf8JsonWriter writer, Trajectory value, JsonSerializerOptions options)
         {
             writer.WriteStartObject();

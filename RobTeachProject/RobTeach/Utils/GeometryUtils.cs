@@ -7,11 +7,26 @@ namespace RobTeach.Utils
 {
     public static class GeometryUtils
     {
+        /// <summary>
+        /// Calculates the geometric parameters (center, radius, start/end angles, normal, and sweep direction) of an arc defined by three distinct 3D points.
+        /// The returned start and end angles define a counter-clockwise (CCW) sweep for a DxfArc.
+        /// The `isClockwise` flag indicates if the sequence P1->P2->P3 forms a clockwise or counter-clockwise path.
+        /// </summary>
+        /// <param name="p1">First point on the arc.</param>
+        /// <param name="p2">Second point on the arc (typically the midpoint).</param>
+        /// <param name="p3">Third point on the arc.</param>
+        /// <param name="tolerance">Tolerance for floating point comparisons (e.g., for collinearity checks).</param>
+        /// <returns>A tuple containing arc parameters if calculable, otherwise null (e.g., if points are collinear).</returns>
+        /// <remarks>
+        /// The method first determines the normal of the plane containing the arc.
+        /// It then projects the points onto the XY plane (simplification for center/radius calc) to find 2D circumcenter and radius.
+        /// Angles are calculated in degrees. The Z coordinate of the center is assumed to be p1.Z.
+        /// The `isClockwise` flag helps interpret the original P1->P2->P3 direction. The returned start/end angles
+        /// are adjusted so that they represent a CCW sweep, as expected by DxfArc constructor.
+        /// Based on concepts from: https://www.ambrsoft.com/TrigoCalc/Circle3D.htm and general geometric formulas.
+        /// </remarks>
         public static (DxfPoint Center, double Radius, double StartAngle, double EndAngle, DxfVector Normal, bool IsClockwise)? CalculateArcParametersFromThreePoints(DxfPoint p1, DxfPoint p2, DxfPoint p3, double tolerance = 1e-6)
         {
-            // Implementation of 3-point to arc parameters calculation.
-            // Source for algorithm idea: https://www.ambrsoft.com/TrigoCalc/Circle3D.htm and various geometry resources.
-
             // Check for collinearity or coincident points
             // Vector P1P2
             double v12x = p2.X - p1.X;
@@ -116,6 +131,11 @@ namespace RobTeach.Utils
         public static (DxfPoint Center, double Radius, DxfVector Normal)?
             CalculateCircleCenterRadiusFromThreePoints(DxfPoint p1, DxfPoint p2, DxfPoint p3, double tolerance = 1e-9) // Using a slightly higher precision tolerance internally
         {
+            // This method calculates the center and radius of a circle passing through three 3D points.
+            // It uses vector math based on formulas for the circumcenter of a 3D triangle.
+            // One common source for such formulas is Eric Lengyel's "Mathematics for 3D Game Programming and Computer Graphics".
+            // The normal of the circle's plane is determined by the cross product of vectors formed by the points.
+
             DxfVector v12 = p2 - p1;
             DxfVector v13 = p3 - p1;
 

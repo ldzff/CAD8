@@ -17,7 +17,7 @@ using IxMilia.Dxf.Entities;
 using System.Diagnostics; // Added for Debug.WriteLine
 using System.IO;
 using System.Text; // Added for Encoding
-using RobTeach.Utils; // Added for GeometryUtils
+using RobTeach.Utils; // Added for GeometryUtils AND TrajectoryUtils
 using IxMilia.Dxf.Blocks; // Added for DxfBlock
 
 // using netDxf.Header; // No longer needed with IxMilia.Dxf
@@ -130,19 +130,9 @@ namespace RobTeach.Views
             // Attach event handler for canvas resize
             CadCanvas.SizeChanged += CadCanvas_SizeChanged;
 
-            // Attach event handlers for nozzle checkboxes
-            // UpperNozzleOnCheckBox.Checked += UpperNozzleOnCheckBox_Changed; // Removed
-            // UpperNozzleOnCheckBox.Unchecked += UpperNozzleOnCheckBox_Changed; // Removed
-            // LowerNozzleOnCheckBox.Checked += LowerNozzleOnCheckBox_Changed; // Removed
-            // LowerNozzleOnCheckBox.Unchecked += LowerNozzleOnCheckBox_Changed; // Removed
-
-            // Set initial state for dependent checkboxes
-            // UpperNozzleOnCheckBox_Changed(null, null); // Removed
-            // LowerNozzleOnCheckBox_Changed(null, null); // Removed
-
             // Initialize Spray Pass Management
             _selectedDxfEntities.Clear();
-            _wpfShapeToDxfEntityMap.Clear(); // Assuming this map is for temporary DXF display, not persistent selection state
+            _wpfShapeToDxfEntityMap.Clear();
 
             if (_currentConfiguration.SprayPasses == null || !_currentConfiguration.SprayPasses.Any())
             {
@@ -192,25 +182,23 @@ namespace RobTeach.Views
             // Event handler for TrajectoryRuntimeTextBox
             TrajectoryRuntimeTextBox.LostFocus += TrajectoryRuntimeTextBox_LostFocus;
 
-            // Event handler for ProductNameTextBox LostFocus (assuming XAML TextChanged might remain for isDirty)
+            // Event handler for ProductNameTextBox LostFocus
             ProductNameTextBox.LostFocus += ProductNameTextBox_LostFocus;
 
             // Test Run Button
-            StartTestRunButton.IsEnabled = false; // Initial state
-            StartTestRunButton.Click += StartTestRunButton_Click; // Wire up the event handler
+            StartTestRunButton.IsEnabled = false;
+            StartTestRunButton.Click += StartTestRunButton_Click;
 
             RefreshCurrentPassTrajectoriesListBox();
-            UpdateSelectedTrajectoryDetailUI(); // Initial call (renamed)
-            RefreshCadCanvasHighlights(); // Initial call for canvas highlights
+            UpdateSelectedTrajectoryDetailUI();
+            RefreshCadCanvasHighlights();
         }
 
-        // Removed UpperNozzleOnCheckBox_Changed and LowerNozzleOnCheckBox_Changed
 
         private void RefreshCadCanvasHighlights()
         {
-            if (_currentConfiguration == null || CadCanvas == null) return; // Basic safety check
+            if (_currentConfiguration == null || CadCanvas == null) return;
 
-            // Determine entities in the current pass
             HashSet<DxfEntity> entitiesInCurrentPass = new HashSet<DxfEntity>();
             if (_currentConfiguration.CurrentPassIndex >= 0 &&
                 _currentConfiguration.CurrentPassIndex < _currentConfiguration.SprayPasses.Count)
@@ -220,7 +208,7 @@ namespace RobTeach.Views
                 {
                     foreach (var trajectory in currentPass.Trajectories)
                     {
-                        if (trajectory.OriginalDxfEntity != null) // Assuming Trajectory stores the original DxfEntity
+                        if (trajectory.OriginalDxfEntity != null)
                         {
                             entitiesInCurrentPass.Add(trajectory.OriginalDxfEntity);
                         }
@@ -228,7 +216,6 @@ namespace RobTeach.Views
                 }
             }
 
-            // Update all shapes on canvas
             foreach (var wpfShape in _wpfShapeToDxfEntityMap.Keys)
             {
                 if (_wpfShapeToDxfEntityMap.TryGetValue(wpfShape, out DxfEntity associatedEntity))
@@ -244,15 +231,12 @@ namespace RobTeach.Views
                         wpfShape.StrokeThickness = DefaultStrokeThickness;
                     }
                 }
-                else // Should not happen if map is correct
+                else
                 {
                     wpfShape.Stroke = DefaultStrokeBrush;
                     wpfShape.StrokeThickness = DefaultStrokeThickness;
                 }
             }
-
-            // Also, ensure that trajectory preview polylines are handled if they are separate
-            // For now, this method focuses on the shapes mapped from _wpfShapeToDxfEntityMap
         }
 
 
@@ -262,13 +246,12 @@ namespace RobTeach.Views
             var newPass = new SprayPass { PassName = $"Pass {passCount + 1}" };
             _currentConfiguration.SprayPasses.Add(newPass);
 
-            // Refresh ListBox - simple way for now
             SprayPassesListBox.ItemsSource = null;
             SprayPassesListBox.ItemsSource = _currentConfiguration.SprayPasses;
             SprayPassesListBox.SelectedItem = newPass;
             AppLogger.Log($"Spray pass added: '{newPass.PassName}'.");
             isConfigurationDirty = true;
-            UpdateDirectionIndicator(); // New pass selected, current trajectory selection changes
+            UpdateDirectionIndicator();
             UpdateOrderNumberLabels();
         }
 
@@ -285,7 +268,6 @@ namespace RobTeach.Views
                 }
                 _currentConfiguration.SprayPasses.Remove(selectedPass);
 
-                // Refresh ListBox and select a new item
                 SprayPassesListBox.ItemsSource = null;
                 SprayPassesListBox.ItemsSource = _currentConfiguration.SprayPasses;
                 if (_currentConfiguration.SprayPasses.Any())
@@ -296,19 +278,17 @@ namespace RobTeach.Views
                 else
                 {
                     _currentConfiguration.CurrentPassIndex = -1;
-                    // Potentially add a new default pass here if needed
                 }
                 AppLogger.Log($"Spray pass removed: '{selectedPass.PassName}'. New current pass index: {_currentConfiguration.CurrentPassIndex}");
-                RefreshCurrentPassTrajectoriesListBox(); // Update trajectory list for new selected pass
+                RefreshCurrentPassTrajectoriesListBox();
                 isConfigurationDirty = true;
-                UpdateDirectionIndicator(); // Pass removed, current trajectory selection changes
+                UpdateDirectionIndicator();
                 UpdateOrderNumberLabels();
             }
         }
 
         private void UpdateOrderNumberLabels()
         {
-            // Clear existing labels
             foreach (var label in _orderNumberLabels)
             {
                 if (CadCanvas.Children.Contains(label))
@@ -318,42 +298,32 @@ namespace RobTeach.Views
             }
             _orderNumberLabels.Clear();
 
-            // Check for valid current pass and trajectories
             if (_currentConfiguration == null ||
                 _currentConfiguration.CurrentPassIndex < 0 ||
                 _currentConfiguration.CurrentPassIndex >= _currentConfiguration.SprayPasses.Count ||
                 _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex].Trajectories == null)
             {
-                // Debug.WriteLine("[JULES_DEBUG] UpdateOrderNumberLabels: Current configuration or pass is invalid, returning.");
                 return;
             }
 
             var currentPassTrajectories = _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex].Trajectories;
-            // Debug.WriteLine("[JULES_DEBUG] At the beginning of UpdateOrderNumberLabels. Current pass trajectory order:");
-            // for (int i = 0; i < currentPassTrajectories.Count; i++)
-            // {
-            //     Debug.WriteLine($"[JULES_DEBUG]   UpdateLabels-Entry: Pass[{_currentConfiguration.CurrentPassIndex}]-Trajectory[{i}]: {currentPassTrajectories[i].ToString()}");
-            // }
 
             for (int i = 0; i < currentPassTrajectories.Count; i++)
             {
                 var selectedTrajectory = currentPassTrajectories[i];
-                // Debug.WriteLine($"[JULES_DEBUG] UpdateOrderNumberLabels: Checking Trajectory - Type: {selectedTrajectory.PrimitiveType}, Points Count: {(selectedTrajectory.Points?.Count ?? -1)}, Index: {i}");
 
                 if (selectedTrajectory.Points == null || !selectedTrajectory.Points.Any())
                 {
-                    // Debug.WriteLine($"[JULES_DEBUG] UpdateOrderNumberLabels: SKIPPING label for Trajectory - Type: {selectedTrajectory.PrimitiveType}, Index: {i} due to no/empty points.");
-                    continue; // Skip if no points to base position on
+                    continue;
                 }
 
                 TextBlock orderLabel = new TextBlock
                 {
                     Text = (i + 1).ToString(),
                     FontSize = 10,
-                    Foreground = Brushes.DarkSlateBlue, // Changed to DarkSlateBlue for better contrast potentially
-                    Background = new SolidColorBrush(Color.FromArgb(200, 255, 255, 180)), // Semi-transparent light yellow
+                    Foreground = Brushes.DarkSlateBlue,
+                    Background = new SolidColorBrush(Color.FromArgb(200, 255, 255, 180)),
                     Padding = new Thickness(2, 0, 2, 0),
-                    // ToolTip = $"Order: {i + 1}, Entity: {selectedTrajectory.PrimitiveType}" // Optional: add a tooltip
                 };
 
                 Point anchorPoint;
@@ -363,21 +333,18 @@ namespace RobTeach.Views
                     Point p_end = selectedTrajectory.Points[selectedTrajectory.Points.Count - 1];
                     anchorPoint = new Point((p_start.X + p_end.X) / 2, (p_start.Y + p_end.Y) / 2);
                 }
-                else // For Arcs, Circles, or Lines with < 2 points (though points.Any() is already checked)
+                else
                 {
-                    int midIndex = selectedTrajectory.Points.Count / 2; // Integer division gives lower midpoint for even counts
+                    int midIndex = selectedTrajectory.Points.Count / 2;
                     anchorPoint = selectedTrajectory.Points[midIndex];
                 }
 
-                // Define offsets - these might need tweaking after visual review
-                // Keeping previous offsets as a starting point
-                double offsetX = 5;  // Offset to the right of the anchor point
-                double offsetY = -15; // Offset above the anchor point (FontSize is 10, Padding makes it taller)
+                double offsetX = 5;
+                double offsetY = -15;
 
-                // Debug.WriteLine($"[JULES_DEBUG] UpdateOrderNumberLabels: Creating label for Trajectory - Type: {selectedTrajectory.PrimitiveType}, Index: {i}, Anchor: {anchorPoint}");
                 Canvas.SetLeft(orderLabel, anchorPoint.X + offsetX);
                 Canvas.SetTop(orderLabel, anchorPoint.Y + offsetY);
-                Panel.SetZIndex(orderLabel, 100); // Ensure labels are on top
+                Panel.SetZIndex(orderLabel, 100);
 
                 CadCanvas.Children.Add(orderLabel);
                 _orderNumberLabels.Add(orderLabel);
@@ -389,13 +356,11 @@ namespace RobTeach.Views
             if (SprayPassesListBox.SelectedItem is SprayPass selectedPass)
             {
                 string oldPassName = selectedPass.PassName;
-                // Simple rename for now, no input dialog
-                string newPassName = selectedPass.PassName + "_Renamed"; // Simulate a rename
+                string newPassName = selectedPass.PassName + "_Renamed";
                 selectedPass.PassName = newPassName;
 
                 AppLogger.Log($"Spray pass renamed from '{oldPassName}' to '{newPassName}'.");
 
-                // Refresh ListBox
                 SprayPassesListBox.ItemsSource = null;
                 SprayPassesListBox.ItemsSource = _currentConfiguration.SprayPasses;
                 SprayPassesListBox.SelectedItem = selectedPass;
@@ -409,45 +374,40 @@ namespace RobTeach.Views
             {
                 _currentConfiguration.CurrentPassIndex = SprayPassesListBox.SelectedIndex;
             }
-            else if (!_currentConfiguration.SprayPasses.Any()) // All passes removed
+            else if (!_currentConfiguration.SprayPasses.Any())
             {
                  _currentConfiguration.CurrentPassIndex = -1;
             }
-            // If selection cleared due to item removal, index might be -1 but a pass might still be selected by default.
-            // The RemovePassButton_Click should handle setting a valid CurrentPassIndex.
 
             RefreshCurrentPassTrajectoriesListBox();
-            UpdateSelectedTrajectoryDetailUI(); // Renamed
+            UpdateSelectedTrajectoryDetailUI();
             RefreshCadCanvasHighlights();
-            UpdateDirectionIndicator(); // Spray pass selection changed
+            UpdateDirectionIndicator();
             UpdateOrderNumberLabels();
         }
 
         private void RefreshCurrentPassTrajectoriesListBox()
         {
-            CurrentPassTrajectoriesListBox.ItemsSource = null; // Clear existing items/binding
+            CurrentPassTrajectoriesListBox.ItemsSource = null;
             if (_currentConfiguration.CurrentPassIndex >= 0 && _currentConfiguration.CurrentPassIndex < _currentConfiguration.SprayPasses.Count)
             {
                 var currentPass = _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex];
                 CurrentPassTrajectoriesListBox.ItemsSource = currentPass.Trajectories;
-                // Assuming Trajectory.ToString() is overridden for display or DisplayMemberPath is set in XAML if needed
             }
-            // else CurrentPassTrajectoriesListBox remains empty
-            UpdateSelectedTrajectoryDetailUI(); // Renamed: Update nozzle UI as selected trajectory might change
+            UpdateSelectedTrajectoryDetailUI();
         }
 
         private void CurrentPassTrajectoriesListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             Trace.WriteLine("++++ CurrentPassTrajectoriesListBox_SelectionChanged Fired ++++");
             Trace.Flush();
-            UpdateSelectedTrajectoryDetailUI(); // Renamed
-            UpdateDirectionIndicator(); // Add call to update direction indicator
-    RefreshCadCanvasHighlights(); // <-- ADD THIS LINE
+            UpdateSelectedTrajectoryDetailUI();
+            UpdateDirectionIndicator();
+    RefreshCadCanvasHighlights();
         }
 
         private void UpdateDirectionIndicator()
         {
-            // Clear existing indicators
             foreach (var indicator in _directionIndicators)
             {
                 if (CadCanvas.Children.Contains(indicator))
@@ -457,7 +417,6 @@ namespace RobTeach.Views
             }
             _directionIndicators.Clear();
 
-            // Check for valid current pass
             if (_currentConfiguration == null ||
                 _currentConfiguration.CurrentPassIndex < 0 ||
                 _currentConfiguration.CurrentPassIndex >= _currentConfiguration.SprayPasses.Count ||
@@ -472,14 +431,14 @@ namespace RobTeach.Views
                 return;
             }
 
-            const double fixedArrowLineLength = 8.0; // Fixed visual length for the arrow's line segment
-            Trajectory? actuallySelectedItem = CurrentPassTrajectoriesListBox.SelectedItem as Trajectory; // Get selected item once
+            const double fixedArrowLineLength = 8.0;
+            Trajectory? actuallySelectedItem = CurrentPassTrajectoriesListBox.SelectedItem as Trajectory;
 
-            foreach (var trajectoryInLoop in currentPass.Trajectories) // Renamed loop variable for clarity
+            foreach (var trajectoryInLoop in currentPass.Trajectories)
             {
                 if (trajectoryInLoop.Points == null || !trajectoryInLoop.Points.Any())
                 {
-                    continue; // Skip if no points
+                    continue;
                 }
 
                 var newIndicator = new DirectionIndicator
@@ -516,31 +475,29 @@ namespace RobTeach.Views
                     case "Arc":
                         if (points.Count >= 2)
                         {
-                            Point p0 = points[0]; // First point on arc
-                            Point p1 = points[1]; // Second point to determine initial tangent
+                            Point p0 = points[0];
+                            Point p1 = points[1];
                             Vector direction = p1 - p0;
 
-                            if (direction.Length > 0.001) // Check for non-zero length
+                            if (direction.Length > 0.001)
                             {
                                 direction.Normalize();
-                                // Center the short arrow around p0
                                 arrowStartPoint = p0 - direction * (fixedArrowLineLength / 2.0);
                                 arrowEndPoint = p0 + direction * (fixedArrowLineLength / 2.0);
                                 addIndicator = true;
                             }
                         }
-                        break; // End of case "Arc"
+                        break;
                     case "Circle":
                         if (points.Count >= 2)
                         {
-                            Point p0 = points[0]; // First point on circumference
-                            Point p1 = points[1]; // Second point to determine initial tangent
+                            Point p0 = points[0];
+                            Point p1 = points[1];
                             Vector direction = p1 - p0;
 
                             if (direction.Length > 0)
                             {
                                 direction.Normalize();
-                                // Center the short arrow around p0
                                 arrowStartPoint = p0 - direction * (fixedArrowLineLength / 2.0);
                                 arrowEndPoint = p0 + direction * (fixedArrowLineLength / 2.0);
                                 addIndicator = true;
@@ -548,7 +505,6 @@ namespace RobTeach.Views
                         }
                         break;
                     default:
-                        // Unknown primitive type, do not show indicator
                         break;
                 }
 
@@ -556,7 +512,7 @@ namespace RobTeach.Views
                 {
                     newIndicator.StartPoint = arrowStartPoint;
                     newIndicator.EndPoint = arrowEndPoint;
-                    System.Windows.Controls.Panel.SetZIndex(newIndicator, 99); // Set a high Z-index
+                    System.Windows.Controls.Panel.SetZIndex(newIndicator, 99);
                     CadCanvas.Children.Add(newIndicator);
                     _directionIndicators.Add(newIndicator);
                 }
@@ -575,13 +531,13 @@ namespace RobTeach.Views
                 currentPass.Trajectories.RemoveAt(selectedIndex);
                 currentPass.Trajectories.Insert(selectedIndex - 1, itemToMove);
 
-                CurrentPassTrajectoriesListBox.ItemsSource = null; // Refresh
+                CurrentPassTrajectoriesListBox.ItemsSource = null;
                 CurrentPassTrajectoriesListBox.ItemsSource = currentPass.Trajectories;
                 CurrentPassTrajectoriesListBox.SelectedIndex = selectedIndex - 1;
                 AppLogger.Log($"Trajectory moved up in pass '{currentPass.PassName}': '{itemToMove.ToString()}' to index {selectedIndex - 1}.");
                 isConfigurationDirty = true;
-                RefreshCadCanvasHighlights(); // Visual update after reorder
-                UpdateDirectionIndicator(); // Selection might change or visual needs refresh
+                RefreshCadCanvasHighlights();
+                UpdateDirectionIndicator();
                 UpdateOrderNumberLabels();
             }
         }
@@ -598,47 +554,38 @@ namespace RobTeach.Views
                 currentPass.Trajectories.RemoveAt(selectedIndex);
                 currentPass.Trajectories.Insert(selectedIndex + 1, itemToMove);
 
-                CurrentPassTrajectoriesListBox.ItemsSource = null; // Refresh
+                CurrentPassTrajectoriesListBox.ItemsSource = null;
                 CurrentPassTrajectoriesListBox.ItemsSource = currentPass.Trajectories;
                 CurrentPassTrajectoriesListBox.SelectedIndex = selectedIndex + 1;
                 AppLogger.Log($"Trajectory moved down in pass '{currentPass.PassName}': '{itemToMove.ToString()}' to index {selectedIndex + 1}.");
                 isConfigurationDirty = true;
-                RefreshCadCanvasHighlights(); // Visual update after reorder
-                UpdateDirectionIndicator(); // Selection might change or visual needs refresh
+                RefreshCadCanvasHighlights();
+                UpdateDirectionIndicator();
                 UpdateOrderNumberLabels();
             }
         }
 
-        private void UpdateSelectedTrajectoryDetailUI() // Renamed method
+        private void UpdateSelectedTrajectoryDetailUI()
         {
-            // Nozzle settings part
             if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
             {
-                _trajectoryInDetailView = selectedTrajectory; // Assign to the new field
+                _trajectoryInDetailView = selectedTrajectory;
 
-                // Enable GasOn and LiquidOn checkboxes by default when a trajectory is selected.
-                // Specific IsEnabled state for GasOn will be set based on LiquidOn state.
                 TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = true;
                 TrajectoryUpperNozzleLiquidOnCheckBox.IsEnabled = true;
                 TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = true;
                 TrajectoryLowerNozzleLiquidOnCheckBox.IsEnabled = true;
 
-                // Set IsChecked status for nozzle settings from selected trajectory
-                // TrajectoryUpperNozzleEnabledCheckBox.IsChecked = selectedTrajectory.UpperNozzleEnabled; // Hidden
                 TrajectoryUpperNozzleLiquidOnCheckBox.IsChecked = selectedTrajectory.UpperNozzleLiquidOn;
-                // Set GasOn AFTER LiquidOn, then apply logic
                 TrajectoryUpperNozzleGasOnCheckBox.IsChecked = selectedTrajectory.UpperNozzleGasOn;
 
-                // TrajectoryLowerNozzleEnabledCheckBox.IsChecked = selectedTrajectory.LowerNozzleEnabled; // Hidden
                 TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked = selectedTrajectory.LowerNozzleLiquidOn;
-                // Set GasOn AFTER LiquidOn, then apply logic
                 TrajectoryLowerNozzleGasOnCheckBox.IsChecked = selectedTrajectory.LowerNozzleGasOn;
 
-                // Apply interdependency logic for Upper Nozzle
                 if (TrajectoryUpperNozzleLiquidOnCheckBox.IsChecked == true)
                 {
-                    TrajectoryUpperNozzleGasOnCheckBox.IsChecked = true; // Ensure Gas is on if Liquid is on
-                    selectedTrajectory.UpperNozzleGasOn = true; // Sync model if needed due to this rule
+                    TrajectoryUpperNozzleGasOnCheckBox.IsChecked = true;
+                    selectedTrajectory.UpperNozzleGasOn = true;
                     TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = false;
                 }
                 else
@@ -646,11 +593,10 @@ namespace RobTeach.Views
                     TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = true;
                 }
 
-                // Apply interdependency logic for Lower Nozzle
                 if (TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked == true)
                 {
-                    TrajectoryLowerNozzleGasOnCheckBox.IsChecked = true; // Ensure Gas is on if Liquid is on
-                    selectedTrajectory.LowerNozzleGasOn = true; // Sync model if needed due to this rule
+                    TrajectoryLowerNozzleGasOnCheckBox.IsChecked = true;
+                    selectedTrajectory.LowerNozzleGasOn = true;
                     TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = false;
                 }
                 else
@@ -658,14 +604,8 @@ namespace RobTeach.Views
                     TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = true;
                 }
 
-                // The old EnabledCheckBox_Changed handlers are no longer needed for this.
-                // TrajectoryUpperNozzleEnabledCheckBox_Changed(null, null); // Obsolete
-                // TrajectoryLowerNozzleEnabledCheckBox_Changed(null, null); // Obsolete
-
-                // Geometry settings part
                 TrajectoryIsReversedCheckBox.IsChecked = selectedTrajectory.IsReversed;
 
-                // Visibility of IsReversed checkbox (only for Line/Arc)
                 if (selectedTrajectory.PrimitiveType == "Line" || selectedTrajectory.PrimitiveType == "Arc")
                 {
                     TrajectoryIsReversedCheckBox.Visibility = Visibility.Visible;
@@ -675,7 +615,6 @@ namespace RobTeach.Views
                     TrajectoryIsReversedCheckBox.Visibility = Visibility.Collapsed;
                 }
 
-                // Visibility and content of Z-coordinate panels
                 LineHeightControlsPanel.Visibility = selectedTrajectory.PrimitiveType == "Line" ? Visibility.Visible : Visibility.Collapsed;
                 ArcHeightControlsPanel.Visibility = selectedTrajectory.PrimitiveType == "Arc" ? Visibility.Visible : Visibility.Collapsed;
                 CircleHeightControlsPanel.Visibility = selectedTrajectory.PrimitiveType == "Circle" ? Visibility.Visible : Visibility.Collapsed;
@@ -687,40 +626,33 @@ namespace RobTeach.Views
                 }
                 else if (selectedTrajectory.PrimitiveType == "Arc")
                 {
-                    // For an arc defined by 3 points, the concept of a single "ArcCenter.Z" is complex
-                    // if the arc is tilted. For now, we might display the Z of the first point,
-                    // or average Z, or leave it blank. Assuming P1's Z for simplicity if available.
                     if (selectedTrajectory.ArcPoint1 != null)
                     {
                         ArcCenterZTextBox.Text = selectedTrajectory.ArcPoint1.Coordinates.Z.ToString("F3");
                     }
                     else
                     {
-                        ArcCenterZTextBox.Text = string.Empty; // Or some default like "N/A"
+                        ArcCenterZTextBox.Text = string.Empty;
                     }
                 }
                 else if (selectedTrajectory.PrimitiveType == "Circle")
                 {
-                    // Display Z of CirclePoint1. Assume P1, P2, P3 are co-planar for Z adjustment via this UI.
                     CircleCenterZTextBox.Text = selectedTrajectory.CirclePoint1.Coordinates.Z.ToString("F3");
                 }
 
-                // Set Tags for Z-coordinate TextBoxes
                 LineStartZTextBox.Tag = selectedTrajectory;
                 LineEndZTextBox.Tag = selectedTrajectory;
                 ArcCenterZTextBox.Tag = selectedTrajectory;
-                CircleCenterZTextBox.Tag = selectedTrajectory; // Still use CircleCenterZTextBox for the tag
+                CircleCenterZTextBox.Tag = selectedTrajectory;
 
-                // Runtime TextBox
                 TrajectoryRuntimeTextBox.IsEnabled = true;
-                TrajectoryRuntimeTextBox.Text = selectedTrajectory.Runtime.ToString("F3"); // Format to 3 decimal places
+                TrajectoryRuntimeTextBox.Text = selectedTrajectory.Runtime.ToString("F3");
                 TrajectoryRuntimeTextBox.Tag = selectedTrajectory;
             }
-            else // No trajectory selected
+            else
             {
-                _trajectoryInDetailView = null; // Clear the field
+                _trajectoryInDetailView = null;
 
-                // Disable and uncheck all nozzle checkboxes
                 TrajectoryUpperNozzleEnabledCheckBox.IsEnabled = false;
                 TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = false;
                 TrajectoryUpperNozzleLiquidOnCheckBox.IsEnabled = false;
@@ -735,9 +667,8 @@ namespace RobTeach.Views
                 TrajectoryLowerNozzleGasOnCheckBox.IsChecked = false;
                 TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked = false;
 
-                // Collapse geometry UI elements
                 TrajectoryIsReversedCheckBox.Visibility = Visibility.Collapsed;
-                TrajectoryIsReversedCheckBox.IsChecked = false; // Uncheck
+                TrajectoryIsReversedCheckBox.IsChecked = false;
                 LineHeightControlsPanel.Visibility = Visibility.Collapsed;
                 ArcHeightControlsPanel.Visibility = Visibility.Collapsed;
                 CircleHeightControlsPanel.Visibility = Visibility.Collapsed;
@@ -746,20 +677,17 @@ namespace RobTeach.Views
                 ArcCenterZTextBox.Text = string.Empty;
                 CircleCenterZTextBox.Text = string.Empty;
 
-                // Clear Tags for Z-coordinate TextBoxes
                 LineStartZTextBox.Tag = null;
                 LineEndZTextBox.Tag = null;
                 ArcCenterZTextBox.Tag = null;
                 CircleCenterZTextBox.Tag = null;
 
-                // Runtime TextBox
                 TrajectoryRuntimeTextBox.IsEnabled = false;
                 TrajectoryRuntimeTextBox.Text = string.Empty;
                 TrajectoryRuntimeTextBox.Tag = null;
             }
         }
 
-        // Removed CalculateTrajectoryLength - Moved to TrajectoryUtils
 
         private void TrajectoryRuntimeTextBox_LostFocus(object sender, RoutedEventArgs e)
         {
@@ -776,7 +704,6 @@ namespace RobTeach.Views
                             selectedTrajectory.Runtime = newRuntime;
                             AppLogger.Log($"Trajectory '{selectedTrajectory.ToString()}' Runtime changed from {oldRuntime:F3}s to {newRuntime:F3}s in pass '{_currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex].PassName}'.");
                             isConfigurationDirty = true;
-                            // No need to refresh listbox item as Runtime is not part of its ToString() typically
                         }
                     }
                     else
@@ -784,7 +711,7 @@ namespace RobTeach.Views
                         string msg = $"Runtime cannot be less than the minimum calculated value: {minRuntime:F3} s.";
                         AppLogger.Log(msg, LogLevel.Warning);
                         MessageBox.Show(msg, "Invalid Runtime", MessageBoxButton.OK, MessageBoxImage.Warning);
-                        TrajectoryRuntimeTextBox.Text = selectedTrajectory.Runtime.ToString("F3"); // Revert to current or last valid
+                        TrajectoryRuntimeTextBox.Text = selectedTrajectory.Runtime.ToString("F3");
                     }
                 }
                 else
@@ -792,12 +719,10 @@ namespace RobTeach.Views
                     string msg = "Invalid runtime value. Please enter a valid number.";
                     AppLogger.Log(msg, LogLevel.Error);
                     MessageBox.Show(msg, "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    TrajectoryRuntimeTextBox.Text = selectedTrajectory.Runtime.ToString("F3"); // Revert
+                    TrajectoryRuntimeTextBox.Text = selectedTrajectory.Runtime.ToString("F3");
                 }
             }
         }
-
-        // Removed CalculateMinRuntime - Moved to TrajectoryUtils
 
 
         private void TrajectoryIsReversedCheckBox_Changed(object sender, RoutedEventArgs e)
@@ -805,7 +730,7 @@ namespace RobTeach.Views
             if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
             {
                 bool isReversedNow = TrajectoryIsReversedCheckBox.IsChecked ?? false;
-                if (selectedTrajectory.IsReversed != isReversedNow) // Only proceed if state actually changed
+                if (selectedTrajectory.IsReversed != isReversedNow)
                 {
                     selectedTrajectory.IsReversed = isReversedNow;
                     AppLogger.Log($"Trajectory '{selectedTrajectory.ToString()}' IsReversed changed to: {isReversedNow} in pass '{_currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex].PassName}'.");
@@ -822,232 +747,24 @@ namespace RobTeach.Views
                         var tempArcPoint = selectedTrajectory.ArcPoint1;
                         selectedTrajectory.ArcPoint1 = selectedTrajectory.ArcPoint3;
                         selectedTrajectory.ArcPoint3 = tempArcPoint;
-                        // Note: ArcPoint2 (midpoint) remains the same.
-                        // The interpretation of P1, P2, P3 to calculate center, start/end angles
-                        // in PopulateTrajectoryPoints and WriteSendDataToTempFile must be robust to this swap.
                     }
 
-                    PopulateTrajectoryPoints(selectedTrajectory); // Regenerate points for display
-                    CurrentPassTrajectoriesListBox.Items.Refresh(); // Update display
+                    TrajectoryUtils.GenerateDisplayPoints(selectedTrajectory, TrajectoryPointResolutionAngle);
+                    CurrentPassTrajectoriesListBox.Items.Refresh();
                     RefreshCadCanvasHighlights();
                     UpdateDirectionIndicator();
                 }
             }
         }
 
-        private void PopulateTrajectoryPoints(Trajectory trajectory)
-        {
-            if (trajectory == null) return;
-
-            trajectory.Points.Clear();
-
-            switch (trajectory.PrimitiveType)
-            {
-                case "Line":
-                    trajectory.Points.AddRange(_cadService.ConvertLineTrajectoryToPoints(trajectory));
-                    break;
-                case "Arc":
-                    if (trajectory.ArcPoint1 != null && trajectory.ArcPoint2 != null && trajectory.ArcPoint3 != null)
-                    {
-                        var arcParams = GeometryUtils.CalculateArcParametersFromThreePoints(
-                            trajectory.ArcPoint1.Coordinates,
-                            trajectory.ArcPoint2.Coordinates,
-                            trajectory.ArcPoint3.Coordinates);
-
-                        if (arcParams.HasValue)
-                        {
-                            var (center, radius, startAngle, endAngle, normal, isClockwise) = arcParams.Value;
-                            // Create a temporary DxfArc to use with existing CadService method
-                            // Note: CadService.ConvertArcToPoints expects angles in degrees.
-                            // The DxfArc constructor also expects angles in degrees.
-                            DxfArc tempArc = new DxfArc(center, radius, startAngle, endAngle) { Normal = normal };
-
-                            // If the original intention was a CW arc from P1->P2->P3, but DxfArc always assumes CCW,
-                            // and our CalculateArcParametersFromThreePoints also re-orders to ensure CCW for DxfArc,
-                            // then the points should be generated correctly.
-                            // If `IsReversed` on trajectory is true, that will be handled by `_cadService.ConvertArcToPoints` if it has that logic,
-                            // or it might need to be handled by swapping start/end angles before calling.
-                            // For now, assuming ConvertArcToPoints generates CCW points from startAngle to endAngle.
-                            // The IsReversed logic is handled in ConvertArcTrajectoryToPoints in CadService if it needs to be.
-                            // Let's assume the current CadService.ConvertArcToPoints can take this tempArc.
-                            // However, ConvertArcTrajectoryToPoints takes a Trajectory object.
-                            // We need to adapt _cadService.ConvertArcToPoints or use a similar discretization here.
-
-                            // Re-using the logic from CadService.ConvertArcToPoints directly for now for simplicity:
-                            List<Point> arcPoints = new List<Point>();
-                            double currentAngleDeg = startAngle;
-                            double effectiveEndAngleDeg = endAngle;
-
-                            if (isClockwise) // Should have been handled by swapping start/end in CalculateArcParameters. Re-check.
-                            {
-                                // If CalculateArcParametersFromThreePoints always returns startAngle < endAngle for CCW DxfArc,
-                                // then isClockwise flag here might be redundant or indicate original user intent.
-                                // For now, assume parameters are for CCW traversal.
-                                // If trajectory.IsReversed is true, then we need to reverse the point generation order or angles.
-                                if (trajectory.IsReversed) {
-                                    currentAngleDeg = endAngle;
-                                    effectiveEndAngleDeg = startAngle;
-                                    if (effectiveEndAngleDeg > currentAngleDeg) currentAngleDeg += 360; // Sweep backwards
-                                } else {
-                                     if (effectiveEndAngleDeg < currentAngleDeg) effectiveEndAngleDeg += 360;
-                                }
-                            } else { // CCW from P1->P2->P3
-                                if (trajectory.IsReversed) {
-                                    currentAngleDeg = endAngle;
-                                    effectiveEndAngleDeg = startAngle;
-                                    if (effectiveEndAngleDeg > currentAngleDeg) currentAngleDeg += 360; // Sweep backwards
-                                } else {
-                                     if (effectiveEndAngleDeg < currentAngleDeg) effectiveEndAngleDeg += 360;
-                                }
-                            }
-
-                            bool sweepBackwards = trajectory.IsReversed; // Simplified logic from CadService.ConvertArcTrajectoryToPoints
-                            if (sweepBackwards) {
-                                currentAngleDeg = endAngle; // Start from original end
-                                effectiveEndAngleDeg = startAngle; // Go to original start
-                                 // Ensure we sweep correctly backwards
-                                double sweep = effectiveEndAngleDeg - currentAngleDeg;
-                                if (sweep > 0) sweep -= 360; // Ensure negative or zero sweep for backward
-                                effectiveEndAngleDeg = currentAngleDeg + sweep; // Target for loop
-                            } else {
-                                currentAngleDeg = startAngle;
-                                effectiveEndAngleDeg = endAngle;
-                                double sweep = effectiveEndAngleDeg - currentAngleDeg;
-                                if (sweep < 0) sweep += 360; // Ensure positive or zero sweep for forward
-                                effectiveEndAngleDeg = currentAngleDeg + sweep;
-                            }
-
-
-                            double step = sweepBackwards ? -TrajectoryPointResolutionAngle : TrajectoryPointResolutionAngle;
-                            if (Math.Abs(step) < 1e-6) step = sweepBackwards ? -1.0 : 1.0; // Avoid zero step
-
-                            if (sweepBackwards) {
-                                while (currentAngleDeg >= effectiveEndAngleDeg - Math.Abs(step)/2.0) { // Loop condition for backwards
-                                    double radAngle = currentAngleDeg * Math.PI / 180.0;
-                                    arcPoints.Add(new Point(center.X + radius * Math.Cos(radAngle), center.Y + radius * Math.Sin(radAngle)));
-                                    if (currentAngleDeg <= effectiveEndAngleDeg + 1e-5 && currentAngleDeg >= effectiveEndAngleDeg - 1e-5) break; // Reached end
-                                    currentAngleDeg += step;
-                                     if (currentAngleDeg < effectiveEndAngleDeg && currentAngleDeg > effectiveEndAngleDeg + step -1e-5 ) currentAngleDeg = effectiveEndAngleDeg; // Ensure last point
-                                }
-                            } else {
-                                while (currentAngleDeg <= effectiveEndAngleDeg + Math.Abs(step)/2.0) { // Loop condition for forwards
-                                    double radAngle = currentAngleDeg * Math.PI / 180.0;
-                                    arcPoints.Add(new Point(center.X + radius * Math.Cos(radAngle), center.Y + radius * Math.Sin(radAngle)));
-                                     if (currentAngleDeg <= effectiveEndAngleDeg + 1e-5 && currentAngleDeg >= effectiveEndAngleDeg - 1e-5) break; // Reached end
-                                    currentAngleDeg += step;
-                                    if (currentAngleDeg > effectiveEndAngleDeg && currentAngleDeg < effectiveEndAngleDeg + step - 1e-5) currentAngleDeg = effectiveEndAngleDeg; // Ensure last point
-                                }
-                            }
-                            trajectory.Points.AddRange(arcPoints);
-                        }
-                        else
-                        {
-                            Debug.WriteLine($"[WARNING] PopulateTrajectoryPoints: Could not calculate arc parameters for trajectory. PrimitiveType: {trajectory.PrimitiveType}. Defaulting to line segments if P1,P2,P3 exist.");
-                            // Fallback: add P1, P2, P3 as line segments if arc calculation fails
-                            if (trajectory.ArcPoint1 != null) trajectory.Points.Add(new Point(trajectory.ArcPoint1.Coordinates.X, trajectory.ArcPoint1.Coordinates.Y));
-                            if (trajectory.ArcPoint2 != null) trajectory.Points.Add(new Point(trajectory.ArcPoint2.Coordinates.X, trajectory.ArcPoint2.Coordinates.Y));
-                            if (trajectory.ArcPoint3 != null) trajectory.Points.Add(new Point(trajectory.ArcPoint3.Coordinates.X, trajectory.ArcPoint3.Coordinates.Y));
-                        }
-                    }
-                    else
-                    {
-                        Debug.WriteLine($"[WARNING] PopulateTrajectoryPoints: Arc trajectory missing ArcPoint1/2/3 data.");
-                    }
-                    break;
-                case "Circle":
-                    // Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): Input P1={trajectory.CirclePoint1.Coordinates}, P2={trajectory.CirclePoint2.Coordinates}, P3={trajectory.CirclePoint3.Coordinates}");
-                    var circleParams = GeometryUtils.CalculateCircleCenterRadiusFromThreePoints(
-                        trajectory.CirclePoint1.Coordinates,
-                        trajectory.CirclePoint2.Coordinates,
-                        trajectory.CirclePoint3.Coordinates);
-
-                    if (circleParams.HasValue)
-                    {
-                        var (center, radius, normal) = circleParams.Value;
-                        // Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): Calculated Params: Center={center}, Radius={radius}, Normal={normal}");
-                        List<Point> circlePoints = new List<Point>();
-
-                        DxfVector localXAxis;
-                        double arbThreshold = 1.0 / 64.0;
-                        if (Math.Abs(normal.X) < arbThreshold && Math.Abs(normal.Y) < arbThreshold)
-                            localXAxis = (new DxfVector(0, 1, 0)).Cross(normal).Normalize();
-                        else
-                            localXAxis = (DxfVector.ZAxis).Cross(normal).Normalize();
-                        DxfVector localYAxis = normal.Cross(localXAxis).Normalize();
-                        // Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): ResolutionAngle={TrajectoryPointResolutionAngle}, LocalX={localXAxis}, LocalY={localYAxis}");
-
-                        for (double angleDeg = 0; angleDeg < 360.0; angleDeg += TrajectoryPointResolutionAngle)
-                        {
-                            double angleRad = angleDeg * Math.PI / 180.0;
-                            double cosAngle = Math.Cos(angleRad);
-                            double sinAngle = Math.Sin(angleRad);
-                            DxfVector termX = new DxfVector(localXAxis.X * cosAngle, localXAxis.Y * cosAngle, localXAxis.Z * cosAngle);
-                            DxfVector termY = new DxfVector(localYAxis.X * sinAngle, localYAxis.Y * sinAngle, localYAxis.Z * sinAngle);
-                            DxfVector directionOnPlane_unscaled = termX + termY; // Assuming DxfVector + DxfVector is okay
-                            DxfPoint pointOnCircle = center + new DxfVector(directionOnPlane_unscaled.X * radius, directionOnPlane_unscaled.Y * radius, directionOnPlane_unscaled.Z * radius);
-                            circlePoints.Add(new Point(pointOnCircle.X, pointOnCircle.Y));
-                            // Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): angleDeg={angleDeg}, pointOnCircle={pointOnCircle}, Added to circlePoints. Count: {circlePoints.Count}");
-                        }
-
-                        if (circlePoints.Count > 0)
-                        {
-                            DxfPoint firstDxfPoint = center + new DxfVector(localXAxis.X * radius, localXAxis.Y * radius, localXAxis.Z * radius);
-                            Point firstPoint = new Point(firstDxfPoint.X, firstDxfPoint.Y);
-                            if (Point.Subtract(circlePoints.Last(), firstPoint).LengthSquared > 1e-6)
-                            {
-                                circlePoints.Add(firstPoint);
-                                // Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): Added closing point. Count: {circlePoints.Count}");
-                            }
-                        }
-                        // Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): Total points generated before AddRange: {circlePoints.Count}");
-                        trajectory.Points.AddRange(circlePoints);
-                        Debug.WriteLineIf(circlePoints.Count == 0, $"[JULES_WARNING] PopulateTrajectoryPoints (Circle): Generated 0 points for circle P1={trajectory.CirclePoint1.Coordinates}, P2={trajectory.CirclePoint2.Coordinates}, P3={trajectory.CirclePoint3.Coordinates}");
-                    }
-                    else
-                    {
-                        Debug.WriteLine($"[JULES_WARNING] PopulateTrajectoryPoints (Circle): Could not calculate circle parameters. Fallback to 3 points. P1={trajectory.CirclePoint1.Coordinates}, P2={trajectory.CirclePoint2.Coordinates}, P3={trajectory.CirclePoint3.Coordinates}");
-                        trajectory.Points.Add(new Point(trajectory.CirclePoint1.Coordinates.X, trajectory.CirclePoint1.Coordinates.Y));
-                        // Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle Fallback): Added P1. Points count: {trajectory.Points.Count}");
-                        trajectory.Points.Add(new Point(trajectory.CirclePoint2.Coordinates.X, trajectory.CirclePoint2.Coordinates.Y));
-                        // Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle Fallback): Added P2. Points count: {trajectory.Points.Count}");
-                        trajectory.Points.Add(new Point(trajectory.CirclePoint3.Coordinates.X, trajectory.CirclePoint3.Coordinates.Y));
-                        // Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle Fallback): Added P3. Points count: {trajectory.Points.Count}");
-                        if(trajectory.Points.Count > 1)
-                        {
-                           trajectory.Points.Add(new Point(trajectory.CirclePoint1.Coordinates.X, trajectory.CirclePoint1.Coordinates.Y));
-                           // Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle Fallback): Closed with P1. Points count: {trajectory.Points.Count}");
-                        }
-                    }
-                    // Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): Final trajectory.Points.Count = {trajectory.Points.Count}");
-                    break;
-                default:
-                    // For other types or if PrimitiveType is not set, Points will remain empty or could be populated from OriginalDxfEntity if needed
-                    // For now, we rely on the specific Convert<Primitive>TrajectoryToPoints methods.
-                    // If OriginalDxfEntity exists and is of a known DxfEntityType, could fall back to old methods:
-                    if (trajectory.OriginalDxfEntity != null) {
-                        switch (trajectory.OriginalDxfEntity) {
-                            case DxfLine line: trajectory.Points.AddRange(_cadService.ConvertLineToPoints(line)); break;
-                            case DxfArc arc: trajectory.Points.AddRange(_cadService.ConvertArcToPoints(arc, TrajectoryPointResolutionAngle)); break;
-                            case DxfCircle circle: trajectory.Points.AddRange(_cadService.ConvertCircleToPoints(circle, TrajectoryPointResolutionAngle)); break;
-                        }
-                    }
-                    break;
-            }
-        }
+        // The method PopulateTrajectoryPoints has been moved to TrajectoryUtils.GenerateDisplayPoints.
+        // All calls to PopulateTrajectoryPoints(trajectory) should be replaced with
+        // TrajectoryUtils.GenerateDisplayPoints(trajectory, TrajectoryPointResolutionAngle).
 
         private void TrajectoryUpperNozzleEnabledCheckBox_Changed(object sender, RoutedEventArgs e)
         {
-            // This checkbox is now hidden (Visibility="Collapsed" in XAML).
-            // Its logic for enabling/disabling GasOn/LiquidOn checkboxes is superseded by the new interdependency logic.
-            // We still need to update the model if this event were somehow triggered,
-            // though it shouldn't be if the CheckBox is collapsed.
-            // For safety, or if it's decided to use the model property differently:
             if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
             {
-                // selectedTrajectory.UpperNozzleEnabled = TrajectoryUpperNozzleEnabledCheckBox.IsChecked ?? false;
-                // The model's UpperNozzleEnabled might be re-purposed or removed later.
-                // For now, we won't automatically uncheck Gas/Liquid here based on this hidden checkbox.
-                // isConfigurationDirty = true; // Only if model property is still relevant and changed.
             }
         }
 
@@ -1081,33 +798,27 @@ namespace RobTeach.Views
 
                 if (isLiquidOn)
                 {
-                    if (!selectedTrajectory.UpperNozzleGasOn) // If gas is not already on
+                    if (!selectedTrajectory.UpperNozzleGasOn)
                     {
-                        selectedTrajectory.UpperNozzleGasOn = true; // Update model
-                        TrajectoryUpperNozzleGasOnCheckBox.IsChecked = true; // Force Gas On CheckBox
+                        selectedTrajectory.UpperNozzleGasOn = true;
+                        TrajectoryUpperNozzleGasOnCheckBox.IsChecked = true;
                         AppLogger.Log($"Trajectory '{selectedTrajectory.ToString()}' UpperNozzleGasOn automatically set to: true due to LiquidOn in pass '{_currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex].PassName}'.");
-                        gasStateChangedByLogic = true; // Indicates a change that might need logging if not covered by its own event
+                        gasStateChangedByLogic = true;
                         isConfigurationDirty = true;
                     }
-                    TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = false; // Disable Gas checkbox
+                    TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = false;
                 }
                 else
                 {
-                    TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = true; // Enable Gas checkbox
+                    TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = true;
                 }
-                // No explicit logging for isConfigurationDirty here as it's set if property changes.
             }
         }
 
         private void TrajectoryLowerNozzleEnabledCheckBox_Changed(object sender, RoutedEventArgs e)
         {
-            // This checkbox is now hidden (Visibility="Collapsed" in XAML).
-            // Logic is superseded by new interdependency.
             if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
             {
-                // selectedTrajectory.LowerNozzleEnabled = TrajectoryLowerNozzleEnabledCheckBox.IsChecked ?? false;
-                // The model's LowerNozzleEnabled might be re-purposed or removed later.
-                // isConfigurationDirty = true; // Only if model property is still relevant and changed.
             }
         }
 
@@ -1141,31 +852,28 @@ namespace RobTeach.Views
 
                 if (isLiquidOn)
                 {
-                    if (!selectedTrajectory.LowerNozzleGasOn) // If gas is not already on
+                    if (!selectedTrajectory.LowerNozzleGasOn)
                     {
-                        selectedTrajectory.LowerNozzleGasOn = true; // Update model
-                        TrajectoryLowerNozzleGasOnCheckBox.IsChecked = true; // Force Gas On CheckBox
+                        selectedTrajectory.LowerNozzleGasOn = true;
+                        TrajectoryLowerNozzleGasOnCheckBox.IsChecked = true;
                         AppLogger.Log($"Trajectory '{selectedTrajectory.ToString()}' LowerNozzleGasOn automatically set to: true due to LiquidOn in pass '{_currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex].PassName}'.");
                         gasStateChangedByLogic = true;
                         isConfigurationDirty = true;
                     }
-                    TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = false; // Disable Gas checkbox
+                    TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = false;
                 }
                 else
                 {
-                    TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = true; // Enable Gas checkbox
+                    TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = true;
                 }
             }
         }
 
         private void ProductNameTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            // Check if the control is initialized and loaded to avoid setting dirty flag during setup
             if (this.IsLoaded)
             {
                 isConfigurationDirty = true;
-                // This event fires on every keystroke, which is too noisy for logging.
-                // Logging will be done in a new ProductNameTextBox_LostFocus event handler.
             }
         }
 
@@ -1176,8 +884,8 @@ namespace RobTeach.Views
             if (this.IsLoaded && ProductNameTextBox.Text != _previousProductName)
             {
                 AppLogger.Log($"Product name changed from '{_previousProductName}' to '{ProductNameTextBox.Text}'.");
-                _previousProductName = ProductNameTextBox.Text; // Update for next comparison
-                isConfigurationDirty = true; // isConfigurationDirty is likely already true due to TextChanged
+                _previousProductName = ProductNameTextBox.Text;
+                isConfigurationDirty = true;
             }
         }
 
@@ -1196,7 +904,7 @@ namespace RobTeach.Views
                         newZ);
                     AppLogger.Log($"Trajectory '{_trajectoryInDetailView.ToString()}' LineStartPoint.Z changed from {oldZ:F3} to {newZ:F3} in pass '{_currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex].PassName}'.");
                     isConfigurationDirty = true;
-                    CurrentPassTrajectoriesListBox.Items.Refresh(); // Refresh if Z might be part of ToString()
+                    CurrentPassTrajectoriesListBox.Items.Refresh();
                 }
             }
             else
@@ -1214,12 +922,6 @@ namespace RobTeach.Views
         UpdateLineStartZFromTextBox();
     }
 
-    // Removed LineStartZTextBox_LostFocus
-
-    // CalculateArcParametersFromThreePoints MOVED to RobTeach.Utils.GeometryUtils
-
-    // Removed LineStartZTextBox_LostFocus
-
     private void UpdateLineEndZFromTextBox()
     {
         if (_trajectoryInDetailView != null && _trajectoryInDetailView.PrimitiveType == "Line")
@@ -1235,7 +937,7 @@ namespace RobTeach.Views
                         newZ);
                     AppLogger.Log($"Trajectory '{_trajectoryInDetailView.ToString()}' LineEndPoint.Z changed from {oldZ:F3} to {newZ:F3} in pass '{_currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex].PassName}'.");
                     isConfigurationDirty = true;
-                    CurrentPassTrajectoriesListBox.Items.Refresh(); // Refresh if Z might be part of ToString()
+                    CurrentPassTrajectoriesListBox.Items.Refresh();
                 }
             }
             else
@@ -1253,17 +955,12 @@ namespace RobTeach.Views
         UpdateLineEndZFromTextBox();
     }
 
-    // Removed LineEndZTextBox_LostFocus
-
     private void UpdateArcCenterZFromTextBox()
     {
         if (_trajectoryInDetailView != null && _trajectoryInDetailView.PrimitiveType == "Arc")
         {
             if (double.TryParse(ArcCenterZTextBox.Text, out double newZ))
             {
-                // For a 3-point arc, updating a single "Center Z" is complex.
-                // Assuming this Z applies to all three points P1, P2, P3 for simplicity,
-                // which means the arc is being moved along the Z-axis without tilting.
                 bool changed = false;
                 if (_trajectoryInDetailView.ArcPoint1 != null && _trajectoryInDetailView.ArcPoint1.Coordinates.Z != newZ)
                 {
@@ -1292,12 +989,9 @@ namespace RobTeach.Views
 
                 if (changed)
                 {
-                    // To log the old Z, we'd need to capture it before any changes.
-                    // For simplicity, we'll log that the Arc Z was set to newZ.
-                    // A more detailed log would capture Z of P1, P2, P3 before and after.
                     AppLogger.Log($"Trajectory '{_trajectoryInDetailView.ToString()}' Arc points Z (P1, P2, P3) set to {newZ:F3} in pass '{_currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex].PassName}'.");
                     isConfigurationDirty = true;
-                    PopulateTrajectoryPoints(_trajectoryInDetailView); // Regenerate points with new Z
+                    TrajectoryUtils.GenerateDisplayPoints(_trajectoryInDetailView, TrajectoryPointResolutionAngle);
                     CurrentPassTrajectoriesListBox.Items.Refresh();
                 }
             }
@@ -1306,11 +1000,10 @@ namespace RobTeach.Views
                 string msg = "Invalid Arc Z value. Please enter a valid number.";
                 AppLogger.Log(msg, LogLevel.Error);
                 MessageBox.Show(msg, "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                // Restore to P1's Z or leave as is
                 if(_trajectoryInDetailView.ArcPoint1 != null)
                     ArcCenterZTextBox.Text = _trajectoryInDetailView.ArcPoint1.Coordinates.Z.ToString("F3");
                 else
-                    ArcCenterZTextBox.Text = "0.000"; // Default if P1 is null
+                    ArcCenterZTextBox.Text = "0.000";
             }
         }
     }
@@ -1319,8 +1012,6 @@ namespace RobTeach.Views
     {
         UpdateArcCenterZFromTextBox();
     }
-
-    // Removed ArcCenterZTextBox_LostFocus
 
     private void UpdateCircleCenterZFromTextBox()
     {
@@ -1336,14 +1027,14 @@ namespace RobTeach.Views
                         _trajectoryInDetailView.CirclePoint1.Coordinates.Y, newZ);
                     changed = true;
                 }
-                if (_trajectoryInDetailView.CirclePoint2.Coordinates.Z != newZ) // Assuming co-planar change
+                if (_trajectoryInDetailView.CirclePoint2.Coordinates.Z != newZ)
                 {
                     _trajectoryInDetailView.CirclePoint2.Coordinates = new DxfPoint(
                         _trajectoryInDetailView.CirclePoint2.Coordinates.X,
                         _trajectoryInDetailView.CirclePoint2.Coordinates.Y, newZ);
                     changed = true;
                 }
-                if (_trajectoryInDetailView.CirclePoint3.Coordinates.Z != newZ) // Assuming co-planar change
+                if (_trajectoryInDetailView.CirclePoint3.Coordinates.Z != newZ)
                 {
                     _trajectoryInDetailView.CirclePoint3.Coordinates = new DxfPoint(
                         _trajectoryInDetailView.CirclePoint3.Coordinates.X,
@@ -1353,11 +1044,10 @@ namespace RobTeach.Views
 
                 if (changed)
                 {
-                    // Similar to Arc, logging the fact that Circle points Z were set to newZ.
                     AppLogger.Log($"Trajectory '{_trajectoryInDetailView.ToString()}' Circle points Z (P1, P2, P3) set to {newZ:F3} in pass '{_currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex].PassName}'.");
                     isConfigurationDirty = true;
-                    PopulateTrajectoryPoints(_trajectoryInDetailView); // Regenerate points with new Z
-                    CurrentPassTrajectoriesListBox.Items.Refresh(); // Refresh if Z might be part of ToString() or if Points property affects display
+                    TrajectoryUtils.GenerateDisplayPoints(_trajectoryInDetailView, TrajectoryPointResolutionAngle);
+                    CurrentPassTrajectoriesListBox.Items.Refresh();
                 }
             }
             else
@@ -1365,7 +1055,6 @@ namespace RobTeach.Views
                 string msg = "Invalid Circle Z value. Please enter a valid number.";
                 AppLogger.Log(msg, LogLevel.Error);
                 MessageBox.Show(msg, "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                // Restore to P1's Z
                 CircleCenterZTextBox.Text = _trajectoryInDetailView.CirclePoint1.Coordinates.Z.ToString("F3");
             }
         }
@@ -1376,36 +1065,21 @@ namespace RobTeach.Views
         UpdateCircleCenterZFromTextBox();
     }
 
-    // Removed CircleCenterZTextBox_LostFocus
-
-        /// <summary>
-        /// Handles the Closing event of the window. Ensures Modbus connection is disconnected.
-        /// </summary>
         private void MainWindow_Closing(object sender, CancelEventArgs e)
         {
-            AppLogger.Log("Application closing."); // Log application close
-            _modbusService.Disconnect(); // Clean up Modbus connection.
+            AppLogger.Log("Application closing.");
+            _modbusService.Disconnect();
         }
 
-        /// <summary>
-        /// Handles the SizeChanged event of the CadCanvas.
-        /// Calls PerformFitToView to rescale and center the DXF content when the canvas size changes.
-        /// </summary>
         private void CadCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
         {
             Debug.WriteLine($"[DEBUG] CadCanvas_SizeChanged: NewSize=({e.NewSize.Width}, {e.NewSize.Height}), DXF Loaded={_currentDxfDocument != null}");
-            // Check if the canvas has a valid size and if a DXF document is loaded
             if (e.NewSize.Width > 0 && e.NewSize.Height > 0 && _currentDxfDocument != null)
             {
                 PerformFitToView();
             }
         }
 
-        /// <summary>
-        /// Handles the Click event of the "Load DXF" button.
-        /// Prompts the user to select a DXF file, loads it using <see cref="CadService"/>,
-        /// processes its entities for display, and fits the view to the loaded drawing.
-        /// </summary>
         private void DrawDxfEntities()
         {
             if (_currentDxfDocument == null)
@@ -1453,16 +1127,13 @@ namespace RobTeach.Views
                     var pathGeometry = new PathGeometry();
                     var pathFigure = new PathFigure();
                     
-                    // Convert angles to radians
                     double startAngle = arc.StartAngle * Math.PI / 180.0;
                     double endAngle = arc.EndAngle * Math.PI / 180.0;
                     
-                    // Calculate start point
                     double startX = arc.Center.X + arc.Radius * Math.Cos(startAngle);
                     double startY = arc.Center.Y + arc.Radius * Math.Sin(startAngle);
                     pathFigure.StartPoint = new Point(startX, startY);
 
-                    // Create the arc segment
                     var arcSegment = new ArcSegment
                     {
                         Point = new Point(
@@ -1495,7 +1166,7 @@ namespace RobTeach.Views
 
                     if (polyline.IsClosed && points.Count > 0)
                     {
-                        points.Add(points[0]); // Close the polyline by adding the first point again
+                        points.Add(points[0]);
                     }
 
                     var wpfPolyline = new System.Windows.Shapes.Polyline
@@ -1510,7 +1181,6 @@ namespace RobTeach.Views
 
                 if (shape != null)
                 {
-                    // Generate a unique identifier for the entity
                     string entityId = Guid.NewGuid().ToString();
                     shape.Tag = entityId;
                     shape.MouseLeftButtonDown += OnCadEntityClicked;
@@ -1538,7 +1208,6 @@ namespace RobTeach.Views
                     _currentDxfFilePath = openFileDialog.FileName;
                     _currentDxfDocument = DxfFile.Load(_currentDxfFilePath);
 
-                    // Log loaded entities
                     AppLogger.Log("=== Loaded DXF Entities ===", LogLevel.Info);
                     foreach (var entity in _currentDxfDocument.Entities)
                     {
@@ -1550,39 +1219,34 @@ namespace RobTeach.Views
                         {
                             AppLogger.Log($"Circle: Center({circle.Center.X:F2}, {circle.Center.Y:F2}), Radius={circle.Radius:F2}", LogLevel.Info);
                         }
-                        else if (entity is DxfLwPolyline polyline)
+                        else if (entity is DxfLwPolyline polyline_dxf) // Renamed to avoid conflict
                         {
-                            AppLogger.Log($"Polyline: {polyline.Vertices.Count} vertices:", LogLevel.Info);
-                            foreach (var vertex in polyline.Vertices)
+                            AppLogger.Log($"Polyline: {polyline_dxf.Vertices.Count} vertices:", LogLevel.Info);
+                            foreach (var vertex in polyline_dxf.Vertices)
                             {
                                 AppLogger.Log($"  - Point({vertex.X:F2}, {vertex.Y:F2})", LogLevel.Info);
                             }
                         }
                     }
 
-                    // Calculate and log bounding box
                     _dxfBoundingBox = GetDxfBoundingBox(_currentDxfDocument);
                     AppLogger.Log($"=== DXF Bounding Box ===", LogLevel.Info);
                     AppLogger.Log($"X: {_dxfBoundingBox.X:F2} to {_dxfBoundingBox.X + _dxfBoundingBox.Width:F2}", LogLevel.Info);
                     AppLogger.Log($"Y: {_dxfBoundingBox.Y:F2} to {_dxfBoundingBox.Y + _dxfBoundingBox.Height:F2}", LogLevel.Info);
                     AppLogger.Log($"Width: {_dxfBoundingBox.Width:F2}, Height: {_dxfBoundingBox.Height:F2}", LogLevel.Info);
 
-                    // Clear existing content
                     CadCanvas.Children.Clear();
                     _wpfShapeToDxfEntityMap.Clear();
                     _dxfEntityHandleMap.Clear();
 
-                    // Draw entities and update UI
                     DrawDxfEntities();
-                        PerformFitToView();
+                    PerformFitToView();
                     
-                    // Log canvas information
                     AppLogger.Log($"=== Canvas Information ===", LogLevel.Info);
                     AppLogger.Log($"Canvas Size: {CadCanvas.ActualWidth:F2} x {CadCanvas.ActualHeight:F2}", LogLevel.Info);
                     AppLogger.Log($"Final Scale: ({_scaleTransform.ScaleX:F2}, {_scaleTransform.ScaleY:F2})", LogLevel.Info);
                     AppLogger.Log($"Final Translation: ({_translateTransform.X:F2}, {_translateTransform.Y:F2})", LogLevel.Info);
 
-                    // Update status
                     StatusTextBlock.Text = $"Loaded: {System.IO.Path.GetFileName(_currentDxfFilePath)}";
                     isConfigurationDirty = true;
                 }
@@ -1604,7 +1268,6 @@ namespace RobTeach.Views
             AppLogger.Log($"Canvas Size: {canvasWidth:F2} x {canvasHeight:F2}", LogLevel.Info);
             AppLogger.Log($"DXF Bounds: X({_dxfBoundingBox.Left:F2} to {_dxfBoundingBox.Right:F2}), Y({_dxfBoundingBox.Bottom:F2} to {_dxfBoundingBox.Top:F2})", LogLevel.Info);
 
-            // Calculate scale to fit
             double scaleX = canvasWidth / _dxfBoundingBox.Width;
             double scaleY = canvasHeight / _dxfBoundingBox.Height;
             double scale = Math.Min(scaleX, scaleY);
@@ -1618,14 +1281,10 @@ namespace RobTeach.Views
             double scaledContentHeight = _dxfBoundingBox.Height * scale;
             AppLogger.Log($"Scaled content size: {scaledContentWidth:F2} x {scaledContentHeight:F2}", LogLevel.Info);
 
-            // Calculate translation to center
             double translateX = (canvasWidth - scaledContentWidth) / 2 - (_dxfBoundingBox.Left * scale);
             
-            // Fix: Adjust Y translation calculation
-            // First, calculate the center point of the canvas and the scaled content
             double canvasCenterY = canvasHeight / 2;
             double contentCenterY = (_dxfBoundingBox.Top + _dxfBoundingBox.Bottom) / 2;
-            // Then calculate the translation needed to align the centers
             double translateY = canvasCenterY + (contentCenterY * scale);
 
             AppLogger.Log("Translation Calculation:", LogLevel.Info);
@@ -1634,16 +1293,14 @@ namespace RobTeach.Views
             AppLogger.Log($"  Canvas Center Y = {canvasCenterY:F2}", LogLevel.Info);
             AppLogger.Log($"  Content Center Y = {contentCenterY:F2}", LogLevel.Info);
 
-            // Create and apply transform
             var transformGroup = new TransformGroup();
-            transformGroup.Children.Add(new ScaleTransform(scale, -scale)); // Negative Y scale to flip coordinates
+            transformGroup.Children.Add(new ScaleTransform(scale, -scale));
             transformGroup.Children.Add(new TranslateTransform(translateX, translateY));
 
             AppLogger.Log("=== Final Transform State ===", LogLevel.Info);
             AppLogger.Log($"Scale: ({scale:F4}, {-scale:F4})", LogLevel.Info);
             AppLogger.Log($"Translation: ({translateX:F2}, {translateY:F2})", LogLevel.Info);
 
-            // Calculate and log viewport bounds in DXF coordinates
             double viewportLeft = -translateX / scale;
             double viewportRight = (canvasWidth - translateX) / scale;
             double viewportBottom = -(translateY + canvasHeight) / scale;
@@ -1664,27 +1321,20 @@ namespace RobTeach.Views
             }
         }
 
-        /// <summary>
-        /// Handles the click event on a CAD entity shape, toggling its selection state.
-        /// </summary>
         private void OnCadEntityClicked(object sender, MouseButtonEventArgs e)
         {
             Trace.WriteLine("++++ OnCadEntityClicked Fired ++++");
             Trace.Flush();
             Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Sender is {sender?.GetType().Name}");
-            Trajectory trajectoryToSelect = null; // Declare at wider scope
+            Trajectory trajectoryToSelect = null;
 
-            // Detailed check for the main condition
             if (sender is System.Windows.Shapes.Shape clickedShape && _wpfShapeToDxfEntityMap.TryGetValue(clickedShape, out DxfEntity? dxfEntity))
             {
-                // keyExists is implicitly true if TryGetValue succeeds.
-                // dxfEntity will be non-null if TryGetValue returns true.
                 Trace.WriteLine($"  -- Checking sender type: {sender?.GetType().Name ?? "null"}, IsShape: true, Map contains key: true");
                 Trace.Flush();
                 Trace.WriteLine("  -- Condition (sender is Shape AND _wpfShapeToDxfEntityMap contains key) MET");
                 Trace.Flush();
 
-                // var dxfEntity = _wpfShapeToDxfEntityMap[clickedShape]; // No longer needed due to TryGetValue
                 Trace.WriteLine($"  -- Retrieved dxfEntity: {dxfEntity?.GetType().Name ?? "null"}");
                 Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Retrieved DxfEntity: {dxfEntity?.GetType().Name}");
                 Trace.Flush();
@@ -1694,14 +1344,13 @@ namespace RobTeach.Views
                 Point clickPosDxf = _transformGroup.Inverse.Transform(clickPosCanvas);
                 Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Click position transformed to DXF Coords = {clickPosDxf}");
 
-                Rect entityDxfBounds = GetDxfEntityRect(dxfEntity); // Helper method to be added
+                Rect entityDxfBounds = GetDxfEntityRect(dxfEntity);
                 Debug.WriteLine($"[DEBUG] OnCadEntityClicked: DXF Entity Bounds = {entityDxfBounds}");
                 if (entityDxfBounds != Rect.Empty)
                 {
                     Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Does transformed click fall within entity bounds? {entityDxfBounds.Contains(clickPosDxf)}");
                 }
                 
-                // Logic for adding/removing from current spray pass's trajectories
                 Trace.WriteLine($"  -- Checking current pass index: {_currentConfiguration.CurrentPassIndex}, SprayPasses count: {_currentConfiguration.SprayPasses?.Count ?? 0}");
                 Trace.Flush();
                 if (_currentConfiguration.CurrentPassIndex < 0 || _currentConfiguration.CurrentPassIndex >= _currentConfiguration.SprayPasses.Count)
@@ -1709,7 +1358,7 @@ namespace RobTeach.Views
                     Trace.WriteLine("  -- Current pass index invalid, returning.");
                     Trace.Flush();
                     string msg = "Please select or create a spray pass first.";
-                    AppLogger.Log(msg, LogLevel.Info); // Info, as it's guidance
+                    AppLogger.Log(msg, LogLevel.Info);
                     MessageBox.Show(msg, "No Active Pass", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
@@ -1719,23 +1368,19 @@ namespace RobTeach.Views
 
                 if (existingTrajectory != null)
                 {
-                    // Entity is already part of the current pass. Mark it for selection.
                     Trace.WriteLine("  -- Existing trajectory found. Selecting it.");
                     Trace.Flush();
                     trajectoryToSelect = existingTrajectory;
-                    // Do NOT remove it from currentPass.Trajectories.
-                    // Do NOT set isConfigurationDirty = true just for re-selecting.
                 }
                 else
                 {
-                    // Select - Add to current pass
                     Trace.WriteLine("  -- No existing trajectory. Creating and adding new one.");
                     Trace.Flush();
                     var newTrajectory = new Trajectory
                     {
                         OriginalDxfEntity = dxfEntity,
-                        EntityType = dxfEntity.GetType().Name, // General type, can be overridden by PrimitiveType
-                        IsReversed = false // Default, can be changed by specific logic below or UI
+                        EntityType = dxfEntity.GetType().Name,
+                        IsReversed = false
                     };
 
                     switch (dxfEntity)
@@ -1757,27 +1402,22 @@ namespace RobTeach.Views
                             break;
                         case DxfArc arc:
                             newTrajectory.PrimitiveType = "Arc";
-                            // Calculate P1, P2 (mid), P3 for the arc using DxfArc properties
                             double startRad = arc.StartAngle * Math.PI / 180.0;
                             double endRad = arc.EndAngle * Math.PI / 180.0;
 
-                            // P1 (Start Point)
                             newTrajectory.ArcPoint1.Coordinates = new DxfPoint(
                                 arc.Center.X + arc.Radius * Math.Cos(startRad),
                                 arc.Center.Y + arc.Radius * Math.Sin(startRad),
-                                arc.Center.Z // Assuming arc is planar, Z is from center
+                                arc.Center.Z
                             );
 
-                            // P3 (End Point)
                             newTrajectory.ArcPoint3.Coordinates = new DxfPoint(
                                 arc.Center.X + arc.Radius * Math.Cos(endRad),
                                 arc.Center.Y + arc.Radius * Math.Sin(endRad),
                                 arc.Center.Z
                             );
 
-                            // P2 (Mid Point Angle)
-                            // Ensure angles are handled correctly for sweep (e.g. Start=350, End=10)
-                            if (endRad < startRad) // Adjust if end angle is "smaller" due to wrap around
+                            if (endRad < startRad)
                             {
                                 endRad += 2 * Math.PI;
                             }
@@ -1787,76 +1427,63 @@ namespace RobTeach.Views
                                 arc.Center.Y + arc.Radius * Math.Sin(midRad),
                                 arc.Center.Z
                             );
-                            // Rx, Ry, Rz for ArcPoint1, ArcPoint2, ArcPoint3 will default to 0.0
                             break;
                         case DxfCircle circle:
                             newTrajectory.PrimitiveType = "Circle";
-                            // newTrajectory.CircleCenter = circle.Center; // Replaced by 3 points
-                            // newTrajectory.CircleRadius = circle.Radius; // Replaced by 3 points
-                            // newTrajectory.CircleNormal = circle.Normal; // Will be derived from 3 points or stored if needed
 
-                            DxfVector normal = circle.Normal.Normalize();
-                            DxfPoint center = circle.Center;
-                            double radius = circle.Radius;
+                            DxfVector normal_calc = circle.Normal.Normalize();
+                            DxfPoint center_calc = circle.Center;
+                            double radius_calc = circle.Radius;
 
                             DxfVector localXAxis;
                             double arbThreshold = 1.0 / 64.0;
 
-                            if (Math.Abs(normal.X) < arbThreshold && Math.Abs(normal.Y) < arbThreshold)
+                            if (Math.Abs(normal_calc.X) < arbThreshold && Math.Abs(normal_calc.Y) < arbThreshold)
                             {
-                                localXAxis = (new DxfVector(0, 1, 0)).Cross(normal).Normalize();
+                                localXAxis = (new DxfVector(0, 1, 0)).Cross(normal_calc).Normalize();
                             }
                             else
                             {
-                                localXAxis = (DxfVector.ZAxis).Cross(normal).Normalize();
+                                localXAxis = (DxfVector.ZAxis).Cross(normal_calc).Normalize();
                             }
-                            DxfVector localYAxis = normal.Cross(localXAxis).Normalize();
+                            DxfVector localYAxis = normal_calc.Cross(localXAxis).Normalize();
 
-                            // P1 at 0 degrees on the circle's plane
                             newTrajectory.CirclePoint1.Coordinates = new DxfPoint(
-                                center.X + localXAxis.X * radius,
-                                center.Y + localXAxis.Y * radius,
-                                center.Z + localXAxis.Z * radius);
+                                center_calc.X + localXAxis.X * radius_calc,
+                                center_calc.Y + localXAxis.Y * radius_calc,
+                                center_calc.Z + localXAxis.Z * radius_calc);
 
-                            // P2 at 120 degrees (2*PI/3 radians)
                             double angle120 = 2.0 * Math.PI / 3.0;
                             double cos120 = Math.Cos(angle120);
                             double sin120 = Math.Sin(angle120);
                             newTrajectory.CirclePoint2.Coordinates = new DxfPoint(
-                                center.X + (localXAxis.X * cos120 + localYAxis.X * sin120) * radius,
-                                center.Y + (localXAxis.Y * cos120 + localYAxis.Y * sin120) * radius,
-                                center.Z + (localXAxis.Z * cos120 + localYAxis.Z * sin120) * radius);
+                                center_calc.X + (localXAxis.X * cos120 + localYAxis.X * sin120) * radius_calc,
+                                center_calc.Y + (localXAxis.Y * cos120 + localYAxis.Y * sin120) * radius_calc,
+                                center_calc.Z + (localXAxis.Z * cos120 + localYAxis.Z * sin120) * radius_calc);
 
-                            // P3 at 240 degrees (4*PI/3 radians)
                             double angle240 = 4.0 * Math.PI / 3.0;
                             double cos240 = Math.Cos(angle240);
                             double sin240 = Math.Sin(angle240);
                             newTrajectory.CirclePoint3.Coordinates = new DxfPoint(
-                                center.X + (localXAxis.X * cos240 + localYAxis.X * sin240) * radius,
-                                center.Y + (localXAxis.Y * cos240 + localYAxis.Y * sin240) * radius,
-                                center.Z + (localXAxis.Z * cos240 + localYAxis.Z * sin240) * radius);
+                                center_calc.X + (localXAxis.X * cos240 + localYAxis.X * sin240) * radius_calc,
+                                center_calc.Y + (localXAxis.Y * cos240 + localYAxis.Y * sin240) * radius_calc,
+                                center_calc.Z + (localXAxis.Z * cos240 + localYAxis.Z * sin240) * radius_calc);
 
-                            // Store original parameters as well
-                            newTrajectory.OriginalCircleCenter = center;
-                            newTrajectory.OriginalCircleRadius = radius;
-                            newTrajectory.OriginalCircleNormal = normal;
-
-                            // Ensure Z coordinates are consistent if derived from a 2D circle
-                            // For a true 3D circle, the Z values from above calculation are correct.
-                            // If the original DxfCircle was planar with Z=c.Z, then these points will share that Z.
-                            // No explicit Z adjustment needed here if calculations are correct.
+                            newTrajectory.OriginalCircleCenter = center_calc;
+                            newTrajectory.OriginalCircleRadius = radius_calc;
+                            newTrajectory.OriginalCircleNormal = normal_calc;
 
                             break;
                         default:
                             newTrajectory.PrimitiveType = dxfEntity.GetType().Name;
                             break;
                     }
-                    PopulateTrajectoryPoints(newTrajectory);
-                    newTrajectory.Runtime = TrajectoryUtils.CalculateMinRuntime(newTrajectory); // Set default runtime
+                    TrajectoryUtils.GenerateDisplayPoints(newTrajectory, TrajectoryPointResolutionAngle);
+                    newTrajectory.Runtime = TrajectoryUtils.CalculateMinRuntime(newTrajectory);
                     currentPass.Trajectories.Add(newTrajectory);
                     AppLogger.Log($"Trajectory added to pass '{currentPass.PassName}': Type '{newTrajectory.PrimitiveType}', EntityHandle '{newTrajectory.OriginalEntityHandle}'.", LogLevel.Info);
                     isConfigurationDirty = true;
-                    trajectoryToSelect = newTrajectory; // Mark this new trajectory for selection
+                    trajectoryToSelect = newTrajectory;
                 }
 
                 RefreshCurrentPassTrajectoriesListBox();
@@ -1866,7 +1493,7 @@ namespace RobTeach.Views
                     CurrentPassTrajectoriesListBox.SelectedItem = trajectoryToSelect;
                     Trace.WriteLine($"  -- Explicitly set CurrentPassTrajectoriesListBox.SelectedItem to: {trajectoryToSelect.ToString()}");
                 }
-                else if (existingTrajectory != null) // It was a deselection, and existingTrajectory was the one removed
+                else if (existingTrajectory != null)
                 {
                     Trace.WriteLine($"  -- Trajectory deselected. CurrentPassTrajectoriesListBox.SelectedItem is now: {CurrentPassTrajectoriesListBox.SelectedItem?.ToString() ?? "null"}");
                 }
@@ -1877,31 +1504,24 @@ namespace RobTeach.Views
 
                 Trace.WriteLine("  -- About to call UpdateDirectionIndicator from OnCadEntityClicked");
                 Trace.Flush();
-                UpdateDirectionIndicator(); // Selection changed by clicking CAD entity
+                UpdateDirectionIndicator();
                 UpdateOrderNumberLabels();
             }
             else
             {
                 Trace.WriteLine("  -- Condition (sender is Shape AND _wpfShapeToDxfEntityMap contains key) FAILED");
                 Trace.Flush();
-                // It's possible that the click was on the canvas background or another UI element not part of the DXF drawing.
-                // No return needed here unless this path should explicitly not do anything further.
             }
         }
 
-        /// <summary>
-        /// Updates the trajectory preview by drawing polylines for selected entities.
-        /// </summary>
         private void UpdateTrajectoryPreview()
         {
-            // Clear existing trajectory previews
             foreach (var polyline in _trajectoryPreviewPolylines)
             {
                 CadCanvas.Children.Remove(polyline);
             }
             _trajectoryPreviewPolylines.Clear();
 
-            // Generate preview for selected entities
             foreach (var entity in _selectedDxfEntities)
             {
                 List<System.Windows.Point> points = new List<System.Windows.Point>();
@@ -1936,38 +1556,20 @@ namespace RobTeach.Views
             }
         }
 
-        /// <summary>
-        /// Creates a configuration object from the current application state.
-        /// </summary>
         private Models.Configuration CreateConfigurationFromCurrentState(bool forSaving = false)
         {
-            // This method now primarily ensures the ProductName is up-to-date in _currentConfiguration.
-            // The actual SprayPasses and Trajectories are modified directly by UI interactions.
             _currentConfiguration.ProductName = ProductNameTextBox.Text;
-
-            // The old logic of creating a single trajectory from _selectedDxfEntities is removed.
-            // That list might be empty or used differently now.
-            // If there's a need to explicitly "commit" selections from a temporary list to the current pass,
-            // that logic would go here or be part of the selection process itself.
-
-            // For now, we assume _currentConfiguration is the source of truth and is being updated live.
             return _currentConfiguration;
         }
         private void SaveConfigButton_Click(object sender, RoutedEventArgs e)
         {
-            bool success = PerformSaveOperation(); // PerformSaveOperation will handle dialogs and actual saving
+            bool success = PerformSaveOperation();
             if (success)
             {
                 isConfigurationDirty = false;
-                // StatusTextBlock.Text is likely updated within PerformSaveOperation or can be set here
-                // For example: StatusTextBlock.Text = $"Configuration saved to {Path.GetFileName(_currentLoadedConfigPath)}";
-                // This depends on how much PerformSaveOperation handles.
-                // For now, just focus on calling it and setting the dirty flag.
             }
             else
             {
-                // Optional: Update status if save failed or was cancelled within PerformSaveOperation
-                // StatusTextBlock.Text = "Save configuration cancelled or failed.";
             }
         }
         private void LoadConfigButton_Click(object sender, RoutedEventArgs e)
@@ -1975,7 +1577,7 @@ namespace RobTeach.Views
             bool canProceed = PromptAndTrySaveChanges();
             if (!canProceed)
             {
-                StatusTextBlock.Text = "Load configuration cancelled due to unsaved changes."; // Optional feedback
+                StatusTextBlock.Text = "Load configuration cancelled due to unsaved changes.";
                 return;
             }
 
@@ -1983,9 +1585,8 @@ namespace RobTeach.Views
                 Filter = "Config files (*.json)|*.json|All files (*.*)|*.*",
                 Title = "Load Configuration File"
             };
-            // Set initial directory (similar to LoadDxfButton_Click for consistency)
             string initialDir = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "RobTeachProject", "RobTeach", "Configurations"));
-            if (!Directory.Exists(initialDir)) initialDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Configurations"); // Fallback
+            if (!Directory.Exists(initialDir)) initialDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Configurations");
             openFileDialog.InitialDirectory = initialDir;
 
             if (openFileDialog.ShowDialog() == true)
@@ -1999,41 +1600,17 @@ namespace RobTeach.Views
                         AppLogger.Log($"{msg} Path: {openFileDialog.FileName}", LogLevel.Error);
                         MessageBox.Show(msg, "Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
                         StatusTextBlock.Text = "Error: Failed to deserialize configuration.";
-                        // Initialize a default empty configuration to prevent null reference issues later
                         _currentConfiguration = new Models.Configuration { ProductName = $"Product_{DateTime.Now:yyyyMMddHHmmss}" };
-                        // No further processing if config is null
                     }
-                    else // Configuration loaded successfully
+                    else
                     {
-                        // Debug.WriteLine("[JULES_DEBUG] Configuration loaded. Trajectory order after deserialization:");
-                        // if (_currentConfiguration.SprayPasses != null && _currentConfiguration.CurrentPassIndex >= 0 && _currentConfiguration.CurrentPassIndex < _currentConfiguration.SprayPasses.Count)
-                        // {
-                        //     var currentPass = _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex];
-                        //     if (currentPass != null && currentPass.Trajectories != null)
-                        //     {
-                        //         for (int i = 0; i < currentPass.Trajectories.Count; i++)
-                        //         {
-                        //             Debug.WriteLine($"[JULES_DEBUG]   Pass[{_currentConfiguration.CurrentPassIndex}]-Trajectory[{i}]: {currentPass.Trajectories[i].ToString()}");
-                        //         }
-                        //     }
-                        //     else
-                        //     {
-                        //         Debug.WriteLine($"[JULES_DEBUG]   Current pass ({_currentConfiguration.CurrentPassIndex}) or its trajectories are null.");
-                        //     }
-                        // }
-                        // else
-                        // {
-                        //     Debug.WriteLine("[JULES_DEBUG]   No spray passes or current pass index is invalid.");
-                        // }
                     }
 
                     ProductNameTextBox.Text = _currentConfiguration.ProductName;
 
-                    // Restore Modbus Settings
                     ModbusIpAddressTextBox.Text = _currentConfiguration.ModbusIpAddress;
                     ModbusPortTextBox.Text = _currentConfiguration.ModbusPort.ToString();
 
-                    // Restore Canvas View State
                     if (_currentConfiguration.CanvasState != null)
                     {
                         _scaleTransform.ScaleX = _currentConfiguration.CanvasState.ScaleX;
@@ -2042,10 +1619,8 @@ namespace RobTeach.Views
                         _translateTransform.Y = _currentConfiguration.CanvasState.TranslateY;
                     }
 
-                    // Load Embedded DXF Content
                     if (!string.IsNullOrEmpty(_currentConfiguration.DxfFileContent))
                     {
-                        // Reset current DXF state
                         CadCanvas.Children.Clear();
                         _wpfShapeToDxfEntityMap.Clear();
                         _trajectoryPreviewPolylines.Clear();
@@ -2064,21 +1639,16 @@ namespace RobTeach.Views
 
                             if (_currentDxfDocument != null)
                             {
-                                // Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: Document has {_currentDxfDocument.Entities.Count()} entities.");
                                 List<System.Windows.Shapes.Shape> wpfShapes = _cadService.GetWpfShapesFromDxf(_currentDxfDocument);
-                                // Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: CadService.GetWpfShapesFromDxf returned {wpfShapes.Count} shapes.");
                                 int shapeIndex = 0;
                                 int entityIndex = 0;
                                 foreach(var entity in _currentDxfDocument.Entities)
                                 {
-                                    // string entityIdentifier = $"EntityType: {entity.GetType().Name}, Handle: {entity.Handle.ToString("X")}"; // Removed: Causes compile error
-                                    // Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: Processing DXF Entity at index {entityIndex} (C# type: {entity.GetType().Name})");
                                     if (shapeIndex < wpfShapes.Count)
                                     {
                                         var wpfShape = wpfShapes[shapeIndex];
                                         if (wpfShape != null)
                                         {
-                                            // Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: WPF Shape for Entity at index {entityIndex} is {wpfShape.GetType().Name}. Adding to canvas and map.");
                                             wpfShape.Stroke = DefaultStrokeBrush;
                                             wpfShape.StrokeThickness = DefaultStrokeThickness;
                                             wpfShape.MouseLeftButtonDown += OnCadEntityClicked;
@@ -2087,28 +1657,25 @@ namespace RobTeach.Views
                                         }
                                         else
                                         {
-                                            // Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: WPF Shape for Entity at index {entityIndex} (C# type: {entity.GetType().Name}) is NULL from CadService.");
                                         }
                                     }
                                     else
                                     {
-                                        // Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: No corresponding WPF shape in list for Entity at index {entityIndex} (C# type: {entity.GetType().Name}). Shape list too short.");
                                     }
                                     shapeIndex++;
                                     entityIndex++;
                                 }
-                                if (wpfShapes.Count != _currentDxfDocument.Entities.Count()) // CadService now returns list with nulls, so counts should match. This log indicates if not.
+                                if (wpfShapes.Count != _currentDxfDocument.Entities.Count())
                                 {
-                                     // Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: WARNING - Entity count ({_currentDxfDocument.Entities.Count()}) and WPF shapes list count ({wpfShapes.Count}) do not match. This is unexpected if CadService pads with nulls.");
                                 }
                                 _dxfBoundingBox = GetDxfBoundingBox(_currentDxfDocument);
                                 PerformFitToView();
                                 StatusTextBlock.Text = "Loaded embedded DXF and configuration from project file.";
                             }
-                            else // Should ideally be caught by DxfFile.Load exception
+                            else
                             {
                                 StatusTextBlock.Text = "Project file loaded, but embedded DXF content was invalid or empty.";
-                                _currentDxfDocument = null; // Ensure it's null
+                                _currentDxfDocument = null;
                             }
                         }
                         catch (Exception dxfEx)
@@ -2117,41 +1684,36 @@ namespace RobTeach.Views
                             string msg = "Failed to load embedded DXF content from the project file. It might be corrupt.";
                             AppLogger.Log(msg, dxfEx, LogLevel.Error);
                             MessageBox.Show($"{msg}\nError: {dxfEx.Message}", "DXF Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                            _currentDxfDocument = null; // Ensure it's null
-                             // Clear canvas again in case partial loading happened before error, or if an error occurred in GetWpfShapesFromDxf
+                            _currentDxfDocument = null;
                             CadCanvas.Children.Clear();
                             _wpfShapeToDxfEntityMap.Clear();
                         }
                     }
                     else
                     {
-                        // No embedded DXF content, clear existing DXF from canvas
                         CadCanvas.Children.Clear();
                         _wpfShapeToDxfEntityMap.Clear();
                         _trajectoryPreviewPolylines.Clear();
                         _selectedDxfEntities.Clear();
                         _dxfEntityHandleMap.Clear();
                         _currentDxfDocument = null;
-                        _currentDxfFilePath = null; // No active DXF file path
+                        _currentDxfFilePath = null;
                         _dxfBoundingBox = Rect.Empty;
-                        PerformFitToView(); // Reset view if no DXF
+                        PerformFitToView();
                         StatusTextBlock.Text = "Configuration loaded (no embedded DXF).";
                     }
 
-                    // Initialize Spray Passes from loaded configuration
                     if (_currentConfiguration.SprayPasses == null || !_currentConfiguration.SprayPasses.Any())
                     {
-                        // If loaded config has no passes, create a default one.
                         _currentConfiguration.SprayPasses = new List<SprayPass> { new SprayPass { PassName = "Default Pass 1" } };
                         _currentConfiguration.CurrentPassIndex = 0;
                     }
                     else if (_currentConfiguration.CurrentPassIndex < 0 || _currentConfiguration.CurrentPassIndex >= _currentConfiguration.SprayPasses.Count)
                     {
-                        // If index is invalid, default to first pass.
                         _currentConfiguration.CurrentPassIndex = _currentConfiguration.SprayPasses.Any() ? 0 : -1;
                     }
 
-                    SprayPassesListBox.ItemsSource = null; // Refresh
+                    SprayPassesListBox.ItemsSource = null;
                     SprayPassesListBox.ItemsSource = _currentConfiguration.SprayPasses;
                     if (_currentConfiguration.CurrentPassIndex >= 0 && _currentConfiguration.CurrentPassIndex < SprayPassesListBox.Items.Count)
                     {
@@ -2159,92 +1721,59 @@ namespace RobTeach.Views
                     }
                     else if (SprayPassesListBox.Items.Count > 0)
                     {
-                        SprayPassesListBox.SelectedIndex = 0; // Fallback to selecting the first if index is out of sync
+                        SprayPassesListBox.SelectedIndex = 0;
                         _currentConfiguration.CurrentPassIndex = 0;
                     }
 
+                    RefreshCurrentPassTrajectoriesListBox();
 
-                    // The old global nozzle checkbox updates are removed.
-                    // UpperNozzleOnCheckBox_Changed(null, null); // Removed
-                    // LowerNozzleOnCheckBox_Changed(null, null); // Removed
-
-                    RefreshCurrentPassTrajectoriesListBox(); // Update trajectory list for the (newly) current pass
-
-                    // Restore selected trajectory index for the current pass
                     if (_currentConfiguration.SelectedTrajectoryIndexInCurrentPass >= 0 &&
                         _currentConfiguration.SelectedTrajectoryIndexInCurrentPass < CurrentPassTrajectoriesListBox.Items.Count)
                     {
                         CurrentPassTrajectoriesListBox.SelectedIndex = _currentConfiguration.SelectedTrajectoryIndexInCurrentPass;
                     }
-                    // else, no valid selection or list is empty, ListBox default behavior (no selection or first item)
 
-                    // Reconcile DxfEntity instances if DXF was loaded from embedded content
                     if (!string.IsNullOrEmpty(_currentConfiguration.DxfFileContent) && _currentDxfDocument != null)
                     {
                         ReconcileTrajectoryEntities(_currentConfiguration, _currentDxfDocument);
                     }
 
-                    // Populate points for all trajectories in the loaded configuration
                     if (_currentConfiguration != null && _currentConfiguration.SprayPasses != null)
                     {
-                        // Debug.WriteLine("[JULES_DEBUG] Populating points for loaded trajectories.");
                         foreach (var pass in _currentConfiguration.SprayPasses)
                         {
                             if (pass.Trajectories != null)
                             {
                                 foreach (var trajectory in pass.Trajectories)
                                 {
-                                    PopulateTrajectoryPoints(trajectory);
-                                    // Debug.WriteLine($"[JULES_DEBUG]   Populated points for: {trajectory.ToString()} - Point Count: {trajectory.Points.Count}");
+                                    TrajectoryUtils.GenerateDisplayPoints(trajectory, TrajectoryPointResolutionAngle);
                                 }
                             }
                         }
                     }
 
-                    UpdateSelectedTrajectoryDetailUI(); // Renamed: Update nozzle UI for potentially selected trajectory
-                    RefreshCadCanvasHighlights(); // Update canvas highlights for the loaded pass
-                    UpdateDirectionIndicator(); // Config loaded, selection might have changed
-
-                    // Debug.WriteLine("[JULES_DEBUG] Before calling UpdateOrderNumberLabels in LoadConfigButton_Click:");
-                    // if (_currentConfiguration != null && _currentConfiguration.SprayPasses != null && _currentConfiguration.CurrentPassIndex >= 0 && _currentConfiguration.CurrentPassIndex < _currentConfiguration.SprayPasses.Count)
-                    // {
-                    //     var currentPass = _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex];
-                    //     if (currentPass != null && currentPass.Trajectories != null)
-                    //     {
-                    //         for (int i = 0; i < currentPass.Trajectories.Count; i++)
-                    //         {
-                    //             Debug.WriteLine($"[JULES_DEBUG]   LoadConfig-PreCall: Pass[{_currentConfiguration.CurrentPassIndex}]-Trajectory[{i}]: {currentPass.Trajectories[i].ToString()}");
-                    //         }
-                    //     }
-                    // }
+                    UpdateSelectedTrajectoryDetailUI();
+                    RefreshCadCanvasHighlights();
+                    UpdateDirectionIndicator();
                     UpdateOrderNumberLabels();
 
-                    // Assuming _cadService.GetWpfShapesFromDxf and entity selection logic
-                    // might need to be re-run or updated if the config implies specific CAD entities.
-                    // For now, just loading configuration values. Future work might involve
-                    // re-selecting entities based on handles stored in config if _currentDxfDocument is still relevant.
                     isConfigurationDirty = false;
                     StatusTextBlock.Text = $"Configuration loaded from {Path.GetFileName(openFileDialog.FileName)}";
                     AppLogger.Log($"Successfully loaded configuration: {Path.GetFileName(openFileDialog.FileName)}");
                     _currentLoadedConfigPath = openFileDialog.FileName;
-                    StartTestRunButton.IsEnabled = false; // New config loaded, robot program state is now unknown/stale
+                    StartTestRunButton.IsEnabled = false;
                 }
                 catch (Exception ex)
                 {
                     StatusTextBlock.Text = "Error loading configuration.";
                     string msg = $"Failed to load configuration from {openFileDialog.FileName}";
-                    AppLogger.Log(msg, ex, LogLevel.Error); // Already logged the exception here.
-                    MessageBox.Show($"{msg}: {ex.Message}", "Load Error", MessageBoxButton.OK, MessageBoxImage.Error); // MessageBox is fine.
-                    // Reset to a default state if loading fails
+                    AppLogger.Log(msg, ex, LogLevel.Error);
+                    MessageBox.Show($"{msg}: {ex.Message}", "Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
                     _currentConfiguration = new Models.Configuration { ProductName = $"Product_{DateTime.Now:yyyyMMddHHmmss}" };
                     ProductNameTextBox.Text = _currentConfiguration.ProductName;
-                    // Reset new nozzle CheckBoxes in UI (they are per-trajectory, so this just clears the UI if no trajectory selected)
-                    UpdateSelectedTrajectoryDetailUI(); // Renamed: This will clear them if nothing is selected
-                    // The old global nozzle checkbox resets are removed.
-                    // UpperNozzleOnCheckBox_Changed(null, null); // Removed
-                    // LowerNozzleOnCheckBox_Changed(null, null); // Removed
+                    UpdateSelectedTrajectoryDetailUI();
                     isConfigurationDirty = false;
-                    UpdateDirectionIndicator(); // Clear indicator if error during load
+                    UpdateDirectionIndicator();
                     UpdateOrderNumberLabels();
                 }
             }
@@ -2286,7 +1815,6 @@ namespace RobTeach.Views
                 ModbusConnectButton.IsEnabled = false;
                 ModbusDisconnectButton.IsEnabled = true;
                 SendToRobotButton.IsEnabled = true;
-                // StartTestRunButton remains disabled until data is sent and robot state is confirmed
                 StatusTextBlock.Text = "Successfully connected to Modbus server.";
             }
             else
@@ -2307,7 +1835,7 @@ namespace RobTeach.Views
             ModbusConnectButton.IsEnabled = true;
             ModbusDisconnectButton.IsEnabled = false;
             SendToRobotButton.IsEnabled = false;
-            StartTestRunButton.IsEnabled = false; // Disable on disconnect
+            StartTestRunButton.IsEnabled = false;
             StatusTextBlock.Text = "Disconnected from Modbus server.";
         }
 
@@ -2321,25 +1849,19 @@ namespace RobTeach.Views
                 return;
             }
 
-            // Step 1: Read robot status from Modbus address 1000
-            // Assuming address 1000 is the correct 0-based register index for the library.
-            // If it's 1-based in documentation, it should be 999 here. Using 1000 as per user request.
             ushort robotStatusAddress = 1000;
             ModbusReadInt16Result statusResult = _modbusService.ReadHoldingRegisterInt16(robotStatusAddress);
 
             if (!statusResult.Success)
             {
-                string msg = $"无法读取机械臂状态: {statusResult.Message}"; // "Failed to read robot status"
+                string msg = $"无法读取机械臂状态: {statusResult.Message}";
                 AppLogger.Log(msg, LogLevel.Error);
                 MessageBox.Show(msg, "Modbus 读取失败", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            // --- Validate that all configured spray passes have trajectories ---
             if (_currentConfiguration == null || _currentConfiguration.SprayPasses == null || !_currentConfiguration.SprayPasses.Any())
             {
-                // This case is handled further down, but good to be aware of it.
-                // The more specific check is for existing passes that are empty.
             }
             else
             {
@@ -2351,51 +1873,43 @@ namespace RobTeach.Views
                         AppLogger.Log(msg, LogLevel.Warning);
                         MessageBox.Show(msg, "Empty Spray Pass", MessageBoxButton.OK, MessageBoxImage.Warning);
                         StatusTextBlock.Text = $"Sending aborted: Spray pass '{pass.PassName}' is empty.";
-                        return; // Abort sending
+                        return;
                     }
                 }
             }
-            // --- End of validation for empty passes ---
 
             short robotStatus = statusResult.Value;
-            // Debug.WriteLine($"[JULES_DEBUG] SendToRobotButton_Click: Robot status read from address {robotStatusAddress} = {robotStatus}");
 
-            // Step 2: Check robot status
             if (robotStatus == 0)
             {
-                string msg = "当前机械臂处于工作状态"; // "Robot is currently busy"
+                string msg = "当前机械臂处于工作状态";
                 AppLogger.Log(msg, LogLevel.Warning);
                 MessageBox.Show(msg, "警告", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             else if (robotStatus == 2)
             {
-                string msg = "当前机械臂错误"; // "Robot error"
+                string msg = "当前机械臂错误";
                 AppLogger.Log(msg, LogLevel.Error);
                 MessageBox.Show(msg, "错误", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
-            else if (robotStatus != 1) // Only proceed if status is 1
+            else if (robotStatus != 1)
             {
-                string msg = $"未知的机械臂状态: {robotStatus}"; // "Unknown robot status"
+                string msg = $"未知的机械臂状态: {robotStatus}";
                 AppLogger.Log(msg, LogLevel.Error);
                 MessageBox.Show(msg, "状态未知", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            // If status is 1, proceed with sending data.
-            // Debug.WriteLine($"[JULES_DEBUG] SendToRobotButton_Click: Robot status is 1 (Ready). Proceeding to send configuration.");
             AppLogger.Log("Send to Robot initiated. Robot status is Ready.");
 
-            // --- Write data to temporary file ---
             string tempFilePath = string.Empty;
             try
             {
                 tempFilePath = WriteSendDataToTempFile(_currentConfiguration);
                 AppLogger.Log($"Robot data successfully written to temporary file: {tempFilePath}");
                 StatusTextBlock.Text = $"Data for robot written to {tempFilePath}";
-                // Optionally, inform ModbusStatusTextBlock as well or use a more prominent display
-                // ModbusStatusTextBlock.Text = $"Data also written to {Path.GetFileName(tempFilePath)}";
             }
             catch (Exception ex)
             {
@@ -2403,12 +1917,9 @@ namespace RobTeach.Views
                 AppLogger.Log(msg, ex, LogLevel.Error);
                 MessageBox.Show($"{msg}: {ex.Message}", "File Write Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 StatusTextBlock.Text = "Error writing data to temp file. Sending aborted.";
-                return; // Abort sending if file writing fails
+                return;
             }
-            // --- End of write data to temporary file ---
 
-
-            // Ensure points are populated for the trajectories in the current pass
             if (_currentConfiguration.CurrentPassIndex >= 0 &&
                 _currentConfiguration.CurrentPassIndex < _currentConfiguration.SprayPasses.Count)
             {
@@ -2417,13 +1928,12 @@ namespace RobTeach.Views
                 {
                     foreach (var trajectory in currentPass.Trajectories)
                     {
-                        PopulateTrajectoryPoints(trajectory); // Assumes PopulateTrajectoryPoints(trajectory) exists and is accessible
+                        TrajectoryUtils.GenerateDisplayPoints(trajectory, TrajectoryPointResolutionAngle);
                     }
                 }
             }
             else if (_currentConfiguration.SprayPasses == null || _currentConfiguration.SprayPasses.Count == 0)
             {
-                // No spray passes, so nothing to populate. SendConfiguration will handle this.
                 string msg = "No spray passes in the current configuration to send.";
                 AppLogger.Log(msg, LogLevel.Warning);
                 MessageBox.Show(msg, "Configuration Error", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -2431,41 +1941,31 @@ namespace RobTeach.Views
             }
             else
             {
-                // Invalid CurrentPassIndex, but SprayPasses exist.
-                // SendConfiguration will return an error for invalid index.
-                // No points to populate here for sending.
-                // Optionally, show a MessageBox here too, but ModbusService will also report it.
                 string msg = $"Cannot send: Invalid current spray pass index ({_currentConfiguration.CurrentPassIndex}).";
                 AppLogger.Log(msg, LogLevel.Warning);
                 MessageBox.Show(msg, "Configuration Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return; // Prevent sending if pass index is clearly wrong but passes exist
+                return;
             }
 
-            _currentConfiguration.ProductName = ProductNameTextBox.Text; // Ensure latest product name
+            _currentConfiguration.ProductName = ProductNameTextBox.Text;
             ModbusResponse response = _modbusService.SendConfiguration(_currentConfiguration);
 
-            // Using StatusTextBlock for general feedback seems more consistent with other operations
             if (response.Success)
             {
                 AppLogger.Log($"Configuration successfully sent to robot. Modbus response: {response.Message}");
                 StatusTextBlock.Text = "Configuration successfully sent to robot.";
-                ModbusStatusTextBlock.Text = response.Message; // Keep specific Modbus status updated too
-                StartTestRunButton.IsEnabled = true; // Enable after successful send
+                ModbusStatusTextBlock.Text = response.Message;
+                StartTestRunButton.IsEnabled = true;
             }
             else
             {
                 AppLogger.Log($"Failed to send configuration to robot. Modbus response: {response.Message}", LogLevel.Error);
                 StatusTextBlock.Text = $"Failed to send configuration: {response.Message}";
-                ModbusStatusTextBlock.Text = response.Message; // Update Modbus status as well
+                ModbusStatusTextBlock.Text = response.Message;
                 StartTestRunButton.IsEnabled = false;
             }
         }
 
-        /// <summary>
-        /// Calculates the overall bounding box of the DXF document, considering header extents and all entity extents.
-        /// </summary>
-        /// <param name="dxfDoc">The DXF document.</param>
-        /// <returns>A Rect representing the bounding box, or Rect.Empty if no valid bounds can be determined.</returns>
         private Rect GetDxfBoundingBox(DxfFile dxfDoc)
         {
             AppLogger.Log("GetDxfBoundingBox: Method started.", LogLevel.Info);
@@ -2479,7 +1979,6 @@ namespace RobTeach.Views
             double maxX = double.MinValue, maxY = double.MinValue;
             bool hasValidBounds = false;
 
-            // Calculate bounds directly from entities
             if (dxfDoc.Entities != null && dxfDoc.Entities.Any())
             {
                 AppLogger.Log($"GetDxfBoundingBox: Processing {dxfDoc.Entities.Count()} entities.", LogLevel.Info);
@@ -2507,7 +2006,6 @@ namespace RobTeach.Views
                 return Rect.Empty;
             }
 
-            // Always include the origin (0,0) in the bounding box
             minX = Math.Min(minX, 0);
             minY = Math.Min(minY, 0);
             maxX = Math.Max(maxX, 0);
@@ -2543,7 +2041,6 @@ namespace RobTeach.Views
             else if (entity is DxfArc arc)
             {
                 AppLogger.Log($"Arc: Center({arc.Center.X:F2}, {arc.Center.Y:F2}), Radius:{arc.Radius:F2}, Start:{arc.StartAngle:F2}, End:{arc.EndAngle:F2}", LogLevel.Info);
-                // Calculate start and end points
                 var startPoint = new Point(
                     arc.Center.X + arc.Radius * Math.Cos(arc.StartAngle * Math.PI / 180.0),
                     arc.Center.Y + arc.Radius * Math.Sin(arc.StartAngle * Math.PI / 180.0));
@@ -2556,18 +2053,17 @@ namespace RobTeach.Views
                 double maxX = Math.Max(startPoint.X, endPoint.X);
                 double maxY = Math.Max(startPoint.Y, endPoint.Y);
 
-                // Check cardinal points (0, 90, 180, 270 degrees) if they fall within the arc
-                double startAngle = arc.StartAngle;
-                double endAngle = arc.EndAngle;
-                if (endAngle < startAngle) endAngle += 360;
+                double startAngle_norm = arc.StartAngle; // Renamed to avoid conflict
+                double endAngle_norm = arc.EndAngle; // Renamed to avoid conflict
+                if (endAngle_norm < startAngle_norm) endAngle_norm += 360;
 
-                for (int angle = 0; angle < 360; angle += 90)
+                for (int angle_check = 0; angle_check < 360; angle_check += 90) // Renamed to avoid conflict
                 {
-                    double normalizedAngle = angle;
-                    while (normalizedAngle < startAngle) normalizedAngle += 360;
-                    if (normalizedAngle >= startAngle && normalizedAngle <= endAngle)
+                    double normalizedAngle = angle_check;
+                    while (normalizedAngle < startAngle_norm) normalizedAngle += 360;
+                    if (normalizedAngle >= startAngle_norm && normalizedAngle <= endAngle_norm)
                     {
-                        double rad = angle * Math.PI / 180.0;
+                        double rad = angle_check * Math.PI / 180.0;
                         double x = arc.Center.X + arc.Radius * Math.Cos(rad);
                         double y = arc.Center.Y + arc.Radius * Math.Sin(rad);
                         minX = Math.Min(minX, x);
@@ -2615,41 +2111,32 @@ namespace RobTeach.Views
                 return;
             }
 
-            Point mousePos = e.GetPosition(CadCanvas); // Mouse position relative to the CadCanvas
+            Point mousePos = e.GetPosition(CadCanvas);
 
-            double zoomFactor = 1.1; // Zoom in by 10%
+            double zoomFactor = 1.1;
             double scaleChange;
 
-            if (e.Delta > 0) // Zoom in
+            if (e.Delta > 0)
             {
                 scaleChange = zoomFactor;
             }
-            else // Zoom out
+            else
             {
                 scaleChange = 1.0 / zoomFactor;
             }
 
             double newScaleX = _scaleTransform.ScaleX * scaleChange;
-            double newScaleY = _scaleTransform.ScaleY * scaleChange; // If ScaleY is negative, it will correctly become more negative or less negative
+            double newScaleY = _scaleTransform.ScaleY * scaleChange;
 
-            // Optional: Add min/max zoom limits
             double minScale = 0.05;
             double maxScale = 20.0;
             if (Math.Abs(newScaleX) < minScale || Math.Abs(newScaleX) > maxScale)
             {
                 AppLogger.Log($"CadCanvas_MouseWheel: Zoom scale {newScaleX:F4} out of limits [{minScale}, {maxScale}]. No zoom applied.", LogLevel.Debug);
-                return; // Zoom limit reached
+                return;
             }
 
             AppLogger.Log($"CadCanvas_MouseWheel: MousePos=({mousePos.X:F2},{mousePos.Y:F2}), Delta={e.Delta}, OldScale=({_scaleTransform.ScaleX:F4},{_scaleTransform.ScaleY:F4}), ScaleChange={scaleChange:F4}", LogLevel.Debug);
-
-            // The point under the mouse cursor in world coordinates (DXF coordinates if Y is flipped)
-            // To get this, we need the inverse of the current total transform at the mouse point.
-            // Current transform: Scale then Translate. Inverse: Un-Translate then Un-Scale.
-            // (canvasPoint - Translation) / Scale = worldPoint
-            // canvasPoint.X = worldPoint.X * currentScaleX + currentTranslateX
-            // worldPoint.X = (canvasPoint.X - currentTranslateX) / currentScaleX
-            // worldPoint.Y = (canvasPoint.Y - currentTranslateY) / currentScaleY (where currentScaleY is negative)
 
             Point worldPointBeforeZoom = new Point(
                 (mousePos.X - _translateTransform.X) / _scaleTransform.ScaleX,
@@ -2659,19 +2146,8 @@ namespace RobTeach.Views
 
 
             _scaleTransform.ScaleX = newScaleX;
-            _scaleTransform.ScaleY = newScaleY; // Maintain the sign of original ScaleY (should be negative)
+            _scaleTransform.ScaleY = newScaleY;
             AppLogger.Log($"CadCanvas_MouseWheel: NewScale=({_scaleTransform.ScaleX:F4},{_scaleTransform.ScaleY:F4})", LogLevel.Debug);
-
-
-            // After scaling, the worldPointBeforeZoom, if rendered with the new scale but old translation,
-            // would now appear at a new canvas position:
-            // newCanvasPosX = worldPointBeforeZoom.X * newScaleX + oldTranslateX
-            // newCanvasPosY = worldPointBeforeZoom.Y * newScaleY + oldTranslateY
-
-            // We want this worldPointBeforeZoom to remain at mousePos.X, mousePos.Y on canvas.
-            // So, we need to find newTranslateX, newTranslateY such that:
-            // mousePos.X = worldPointBeforeZoom.X * newScaleX + newTranslateX  => newTranslateX = mousePos.X - worldPointBeforeZoom.X * newScaleX
-            // mousePos.Y = worldPointBeforeZoom.Y * newScaleY + newTranslateY  => newTranslateY = mousePos.Y - worldPointBeforeZoom.Y * newScaleY
 
             double newTranslateX = mousePos.X - (worldPointBeforeZoom.X * _scaleTransform.ScaleX);
             double newTranslateY = mousePos.Y - (worldPointBeforeZoom.Y * _scaleTransform.ScaleY);
@@ -2681,22 +2157,21 @@ namespace RobTeach.Views
             AppLogger.Log($"CadCanvas_MouseWheel: NewTranslate=({_translateTransform.X:F3},{_translateTransform.Y:F3})", LogLevel.Debug);
 
             StatusTextBlock.Text = $"Zoom: {Math.Abs(_scaleTransform.ScaleX * 100):F1}%";
-            isConfigurationDirty = true; // Zoom/pan changes configuration state
+            isConfigurationDirty = true;
             e.Handled = true;
         }
 
         private void CadCanvas_MouseDown(object sender, MouseButtonEventArgs e)
         {
             if (e.MiddleButton == MouseButtonState.Pressed ||
-                (e.LeftButton == MouseButtonState.Pressed && Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl)) ) // More robust Ctrl check
+                (e.LeftButton == MouseButtonState.Pressed && Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl)) )
             {
                 _isPanning = true;
-                _panStartPoint = e.GetPosition(this); // Pan relative to MainWindow for this example, or CadCanvas.Parent
+                _panStartPoint = e.GetPosition(this);
                 CadCanvas.CaptureMouse();
                 StatusTextBlock.Text = "Panning...";
                 e.Handled = true;
             }
-            // Check e.Source to ensure the click originated on the Canvas itself, not on a child like a DxfEntity shape
             else if (e.LeftButton == MouseButtonState.Pressed && e.Source == CadCanvas)
             {
                 isSelectingWithRect = true;
@@ -2706,14 +2181,14 @@ namespace RobTeach.Views
                 {
                     CadCanvas.Children.Remove(selectionRectangleUI);
                 }
-                selectionRectangleUI = null; // Ensure it's null before creating a new one
+                selectionRectangleUI = null;
 
                 selectionRectangleUI = new System.Windows.Shapes.Rectangle
                 {
-                    Stroke = Brushes.DodgerBlue, // Using SelectedStrokeBrush color
+                    Stroke = Brushes.DodgerBlue,
                     StrokeThickness = 1,
                     StrokeDashArray = new System.Windows.Media.DoubleCollection { 3, 2 },
-                    Fill = new SolidColorBrush(Color.FromArgb(40, 0, 120, 255)) // Light semi-transparent blue
+                    Fill = new SolidColorBrush(Color.FromArgb(40, 0, 120, 255))
                 };
 
                 Canvas.SetLeft(selectionRectangleUI, selectionStartPoint.X);
@@ -2721,23 +2196,18 @@ namespace RobTeach.Views
                 selectionRectangleUI.Width = 0;
                 selectionRectangleUI.Height = 0;
 
-                // Add to canvas before trying to set ZIndex, though ZIndex might not be strictly needed here
-                // as it's temporary.
                 CadCanvas.Children.Add(selectionRectangleUI);
-                // Panel.SetZIndex(selectionRectangleUI, int.MaxValue); // Optional: ensure it's on top
 
                 CadCanvas.CaptureMouse();
                 StatusTextBlock.Text = "Defining selection area...";
                 e.Handled = true;
             }
-            // If not handled, and it was a left click, it might be on a DxfEntity shape,
-            // which would be handled by OnCadEntityClicked due to event bubbling if that shape has a handler.
         }
         private void CadCanvas_MouseMove(object sender, MouseEventArgs e)
         {
             if (_isPanning)
             {
-                System.Windows.Point currentPanPoint = e.GetPosition(this); // Or CadCanvas.Parent as IInputElement
+                System.Windows.Point currentPanPoint = e.GetPosition(this);
                 Vector panDelta = currentPanPoint - _panStartPoint;
                 _translateTransform.X += panDelta.X;
                 _translateTransform.Y += panDelta.Y;
@@ -2775,7 +2245,7 @@ namespace RobTeach.Views
                 isSelectingWithRect = false;
                 CadCanvas.ReleaseMouseCapture();
 
-                if (selectionRectangleUI == null) // Should not happen if isSelectingWithRect was true
+                if (selectionRectangleUI == null)
                 {
                     e.Handled = true;
                     return;
@@ -2787,29 +2257,26 @@ namespace RobTeach.Views
                     selectionRectangleUI.Width,
                     selectionRectangleUI.Height);
 
-                // Remove the visual rectangle from canvas
                 CadCanvas.Children.Remove(selectionRectangleUI);
                 selectionRectangleUI = null;
 
-                StatusTextBlock.Text = "Selection processed."; // Or clear
+                StatusTextBlock.Text = "Selection processed.";
                 Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): finalSelectionRect (Canvas UI Coords) = {finalSelectionRect}");
                 Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): _scaleTransform=({_scaleTransform.ScaleX},{_scaleTransform.ScaleY}), _translateTransform=({_translateTransform.X},{_translateTransform.Y})");
 
-                // Small drag check (if it was more of a click)
                 const double clickThreshold = 5.0;
                 if (finalSelectionRect.Width < clickThreshold && finalSelectionRect.Height < clickThreshold)
                 {
-                    e.Handled = true; // Event handled, but no marquee selection performed
+                    e.Handled = true;
                     return;
                 }
 
-                // Check for a valid current pass
                 if (_currentConfiguration == null || _currentConfiguration.CurrentPassIndex < 0 ||
                     _currentConfiguration.CurrentPassIndex >= _currentConfiguration.SprayPasses.Count ||
                     _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex].Trajectories == null)
                 {
                     string msg = "Please select or create a spray pass first to add entities.";
-                    AppLogger.Log(msg, LogLevel.Info); // Info, as it's guidance
+                    AppLogger.Log(msg, LogLevel.Info);
                     MessageBox.Show(msg, "No Active Pass", MessageBoxButton.OK, MessageBoxImage.Information);
                     e.Handled = true;
                     return;
@@ -2840,22 +2307,15 @@ namespace RobTeach.Views
                     return HitTestResultBehavior.Continue;
                 };
 
-                // Optional: HitTestFilterCallback to quickly prune visuals not in _wpfShapeToDxfEntityMap.Keys
-                // For now, let the result callback handle it.
                 VisualTreeHelper.HitTest(CadCanvas, null, hitTestCallback, parameters);
 
                 Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee HitTest): Found {marqueeHitEntities.Count} entities in marquee.");
-
-                // Removed outer declaration and population of newPassTrajectories.
-                // This logic is now handled within the 'else' block for Replace Mode.
 
                 bool isShiftPressed = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
                 Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp: ShiftPressed={isShiftPressed}, Marquee Hits={marqueeHitEntities.Count}");
 
                 if (isShiftPressed)
                 {
-                    // Mode: Deselect within marquee (Shift + Marquee)
-                    // Remove any currently selected items that are within the marquee.
                     int itemsDeselectedCount = 0;
                     for (int i = currentPass.Trajectories.Count - 1; i >= 0; i--)
                     {
@@ -2875,16 +2335,13 @@ namespace RobTeach.Views
                 }
                 else
                 {
-                    // Mode: Additive selection (Normal Marquee)
-                    // Add any items from the marquee that are not already selected.
                     int itemsAddedCount = 0;
-                    List<string> addedTrajectoryInfo = new List<string>(); // For logging details
+                    List<string> addedTrajectoryInfo = new List<string>();
 
-                    foreach (DxfEntity? hitDxfEntity in marqueeHitEntities) // hitDxfEntity can be null if TryGetValue failed but was added
+                    foreach (DxfEntity? hitDxfEntity in marqueeHitEntities)
                     {
-                        if (hitDxfEntity == null) continue; // Skip null entities
+                        if (hitDxfEntity == null) continue;
 
-                        // Use geometric comparison to check if already selected, due to potential instance differences
                         bool alreadySelected = currentPass.Trajectories.Any(t => t.OriginalDxfEntity != null && AreEntitiesGeometricallyEquivalent(t.OriginalDxfEntity, hitDxfEntity));
                         if (!alreadySelected)
                         {
@@ -2892,11 +2349,10 @@ namespace RobTeach.Views
                             var newTrajectory = new Trajectory
                             {
                                 OriginalDxfEntity = hitDxfEntity,
-                                EntityType = hitDxfEntity.GetType().Name, // Safe due to null check above
-                                IsReversed = false // Default
+                                EntityType = hitDxfEntity.GetType().Name,
+                                IsReversed = false
                             };
-                            // Populate geometric properties for the new trajectory
-                            switch (hitDxfEntity) // Safe due to null check above
+                            switch (hitDxfEntity)
                             {
                                 case DxfLine line:
                                     newTrajectory.PrimitiveType = "Line";
@@ -2905,7 +2361,6 @@ namespace RobTeach.Views
                                     break;
                                 case DxfArc arc:
                                     newTrajectory.PrimitiveType = "Arc";
-                                    // Populate ArcPoint1, ArcPoint2, ArcPoint3 from DxfArc
                                     double startRadMarquee = arc.StartAngle * Math.PI / 180.0;
                                     double endRadMarquee = arc.EndAngle * Math.PI / 180.0;
                                     newTrajectory.ArcPoint1.Coordinates = new DxfPoint(
@@ -2925,9 +2380,6 @@ namespace RobTeach.Views
                                     break;
                                 case DxfCircle circle:
                                     newTrajectory.PrimitiveType = "Circle";
-                                    // newTrajectory.CircleCenter = circle.Center; // Replaced by 3 points
-                                    // newTrajectory.CircleRadius = circle.Radius; // Replaced by 3 points
-                                    // newTrajectory.CircleNormal = circle.Normal; // Will be derived
 
                                     DxfVector marquee_normal = circle.Normal.Normalize();
                                     DxfPoint marquee_center = circle.Center;
@@ -2974,17 +2426,16 @@ namespace RobTeach.Views
                                         marquee_center.Y + marquee_dirP3_unscaled.Y * marquee_radius,
                                         marquee_center.Z + marquee_dirP3_unscaled.Z * marquee_radius);
 
-                                    // Store original parameters as well
                                     newTrajectory.OriginalCircleCenter = marquee_center;
                                     newTrajectory.OriginalCircleRadius = marquee_radius;
                                     newTrajectory.OriginalCircleNormal = marquee_normal;
                                     break;
                                 default:
-                                    newTrajectory.PrimitiveType = hitDxfEntity.GetType().Name; // Fallback
+                                    newTrajectory.PrimitiveType = hitDxfEntity.GetType().Name;
                                     break;
                             }
-                            PopulateTrajectoryPoints(newTrajectory);
-                            newTrajectory.Runtime = TrajectoryUtils.CalculateMinRuntime(newTrajectory); // Set default runtime
+                            TrajectoryUtils.GenerateDisplayPoints(newTrajectory, TrajectoryPointResolutionAngle);
+                            newTrajectory.Runtime = TrajectoryUtils.CalculateMinRuntime(newTrajectory);
                             currentPass.Trajectories.Add(newTrajectory);
                             addedTrajectoryInfo.Add($"Type '{newTrajectory.PrimitiveType}', EntityHandle '{newTrajectory.OriginalEntityHandle}'");
                             itemsAddedCount++;
@@ -3010,31 +2461,25 @@ namespace RobTeach.Views
                 e.Handled = true;
             }
         }
-        /// <summary>
-        /// Calculates the bounding rectangle for a given DXF entity.
-        /// </summary>
+
         private bool PerformSaveOperation()
         {
-            // Call update methods at the beginning of save operation
-            // These methods now use _trajectoryInDetailView, which should reflect the
-            // trajectory whose details are currently shown (and potentially edited) in the UI.
             UpdateLineStartZFromTextBox();
             UpdateLineEndZFromTextBox();
             UpdateArcCenterZFromTextBox();
             UpdateCircleCenterZFromTextBox();
 
-            // This logic is largely moved from the original SaveConfigButton_Click
             SaveFileDialog saveFileDialog = new SaveFileDialog
             {
                 Filter = "Config files (*.json)|*.json|All files (*.*)|*.*",
                 Title = "Save Configuration File",
-                FileName = $"{ProductNameTextBox.Text}.json" // Suggest filename
+                FileName = $"{ProductNameTextBox.Text}.json"
             };
 
             string initialDir = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "RobTeachProject", "RobTeach", "Configurations"));
             if (!Directory.Exists(initialDir))
             {
-                initialDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Configurations"); // Fallback
+                initialDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Configurations");
             }
             if (!Directory.Exists(initialDir))
             {
@@ -3047,7 +2492,6 @@ namespace RobTeach.Views
                     string msg = "Error creating configurations directory.";
                     AppLogger.Log(msg, ex, LogLevel.Error);
                     StatusTextBlock.Text = $"{msg} {ex.Message}";
-                    // Optionally, default to a known accessible path or handle error differently
                     initialDir = AppDomain.CurrentDomain.BaseDirectory;
                 }
             }
@@ -3055,31 +2499,21 @@ namespace RobTeach.Views
 
             if (saveFileDialog.ShowDialog() == true)
             {
-                // Ensure the _currentConfiguration object has the latest product name from the UI
                 _currentConfiguration.ProductName = ProductNameTextBox.Text;
 
-                // Populate DxfFileContent for saving
                 string dxfContentForSaving = string.Empty;
                 if (!string.IsNullOrEmpty(_currentDxfFilePath) && File.Exists(_currentDxfFilePath))
                 {
-                    // Case 1: DXF was loaded from a specific file path that still exists
                     try
                     {
                         dxfContentForSaving = File.ReadAllText(_currentDxfFilePath);
-                        // Debug.WriteLine($"[JULES_DEBUG] PerformSaveOperation: Saving DXF content from file: {_currentDxfFilePath}");
                     }
                     catch (Exception ex)
                     {
                         string msg = $"Could not read DXF file content from '{_currentDxfFilePath}' for saving.";
                         AppLogger.Log(msg, ex, LogLevel.Warning);
                         MessageBox.Show($"Warning: {msg} {ex.Message}", "File Read Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
-                        // Keep dxfContentForSaving as string.Empty, or decide if we should use in-memory version if available
-                        // For now, if file read fails, we save empty. This could be debated.
-                        // If _currentConfiguration.DxfFileContent (in memory) is already populated from a previous successful load (even embedded),
-                        // it might be better to use that.
-                        // Let's refine: if file read fails, try to use in-memory if it's not the placeholder path.
                         if (_currentDxfFilePath != "(Embedded DXF from project file)" && !string.IsNullOrEmpty(_currentConfiguration.DxfFileContent)) {
-                             // Debug.WriteLine($"[JULES_DEBUG] PerformSaveOperation: File read failed, but using non-empty in-memory DxfFileContent as fallback.");
                             dxfContentForSaving = _currentConfiguration.DxfFileContent;
                         } else {
                             dxfContentForSaving = string.Empty;
@@ -3088,30 +2522,18 @@ namespace RobTeach.Views
                 }
                 else if (_currentDxfFilePath == "(Embedded DXF from project file)" && !string.IsNullOrEmpty(_currentConfiguration.DxfFileContent))
                 {
-                    // Case 2: DXF was loaded from embedded content in a previously loaded configuration.
-                    // We should re-save this embedded content.
-                    // _currentConfiguration.DxfFileContent already holds this from the load.
                     dxfContentForSaving = _currentConfiguration.DxfFileContent;
-                    // Debug.WriteLine("[JULES_DEBUG] PerformSaveOperation: Re-saving existing embedded DxfFileContent.");
                 }
                 else
                 {
-                    // Case 3: No valid DXF file path and no current embedded content (e.g., new config without DXF loaded, or path was invalid and no prior embedded data)
-                    // Or if _currentDxfFilePath was something else invalid and File.Exists was false.
-                    // If _currentConfiguration.DxfFileContent has something (e.g. from a successful load before path became invalid), use it.
                     if (!string.IsNullOrEmpty(_currentConfiguration.DxfFileContent)) {
-                        // Debug.WriteLine("[JULES_DEBUG] PerformSaveOperation: Using existing in-memory DxfFileContent as _currentDxfFilePath is invalid or missing for file operations.");
                         dxfContentForSaving = _currentConfiguration.DxfFileContent;
                     } else {
-                        // Debug.WriteLine("[JULES_DEBUG] PerformSaveOperation: No valid DXF source found, DxfFileContent will be empty for saving.");
                         dxfContentForSaving = string.Empty;
                     }
                 }
-                // Assign the determined DXF content to the _currentConfiguration, so it's part of what configToSave copies.
                 _currentConfiguration.DxfFileContent = dxfContentForSaving;
 
-
-                // Populate Modbus Settings
                 _currentConfiguration.ModbusIpAddress = ModbusIpAddressTextBox.Text;
                 if (int.TryParse(ModbusPortTextBox.Text, out int parsedPort) && parsedPort >= 1 && parsedPort <= 65535)
                 {
@@ -3119,46 +2541,39 @@ namespace RobTeach.Views
                 }
                 else
                 {
-                    _currentConfiguration.ModbusPort = 502; // Default port
+                    _currentConfiguration.ModbusPort = 502;
                 }
 
-                // Populate CanvasState
-                _currentConfiguration.CanvasState ??= new CanvasViewSettings(); // Ensure not null
+                _currentConfiguration.CanvasState ??= new CanvasViewSettings();
                 _currentConfiguration.CanvasState.ScaleX = _scaleTransform.ScaleX;
                 _currentConfiguration.CanvasState.ScaleY = _scaleTransform.ScaleY;
                 _currentConfiguration.CanvasState.TranslateX = _translateTransform.X;
                 _currentConfiguration.CanvasState.TranslateY = _translateTransform.Y;
 
                 _currentConfiguration.SelectedTrajectoryIndexInCurrentPass = CurrentPassTrajectoriesListBox.SelectedIndex;
-                // This is done before deciding what to filter into configToSave.
 
                 Configuration configToSave = new Configuration
                 {
                     ProductName = _currentConfiguration.ProductName,
-                    CurrentPassIndex = _currentConfiguration.CurrentPassIndex, // Preserve the selected pass index
-                    // NEW: Copy new fields
+                    CurrentPassIndex = _currentConfiguration.CurrentPassIndex,
                     DxfFileContent = _currentConfiguration.DxfFileContent,
                     ModbusIpAddress = _currentConfiguration.ModbusIpAddress,
                     ModbusPort = _currentConfiguration.ModbusPort,
                     CanvasState = _currentConfiguration.CanvasState,
-                    SelectedTrajectoryIndexInCurrentPass = _currentConfiguration.SelectedTrajectoryIndexInCurrentPass, // <-- ADD THIS LINE
+                    SelectedTrajectoryIndexInCurrentPass = _currentConfiguration.SelectedTrajectoryIndexInCurrentPass,
                     SprayPasses = new List<SprayPass>()
                 };
 
-                if (_currentConfiguration.SprayPasses != null) // Ensure SprayPasses list itself is not null
+                if (_currentConfiguration.SprayPasses != null)
                 {
                     foreach (var originalPass in _currentConfiguration.SprayPasses)
                     {
-                        // Only include passes that actually contain trajectories
                         if (originalPass.Trajectories != null && originalPass.Trajectories.Any())
                         {
                             SprayPass passToSave = new SprayPass
                             {
                                 PassName = originalPass.PassName
-                                // If SprayPass has other serializable properties, copy them here
                             };
-                            // Copy the list of trajectories for this pass.
-                            // These are the trajectories that are actively configured.
                             passToSave.Trajectories = new List<Trajectory>(originalPass.Trajectories);
 
                             configToSave.SprayPasses.Add(passToSave);
@@ -3166,14 +2581,13 @@ namespace RobTeach.Views
                     }
                 }
 
-                // Now, save the filtered configuration object
                 try
                 {
                     _configService.SaveConfiguration(configToSave, saveFileDialog.FileName);
                     StatusTextBlock.Text = $"Configuration saved to {Path.GetFileName(saveFileDialog.FileName)}";
                     AppLogger.Log($"Configuration saved to: {saveFileDialog.FileName}");
-                    _currentLoadedConfigPath = saveFileDialog.FileName; // Update current loaded path
-                    return true; // Save successful
+                    _currentLoadedConfigPath = saveFileDialog.FileName;
+                    return true;
                 }
                 catch (Exception ex)
                 {
@@ -3181,24 +2595,22 @@ namespace RobTeach.Views
                     string msg = $"Failed to save configuration to {saveFileDialog.FileName}";
                     AppLogger.Log(msg, ex, LogLevel.Error);
                     MessageBox.Show($"{msg}: {ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return false; // Save failed
+                    return false;
                 }
             }
             else
             {
                 StatusTextBlock.Text = "Save configuration cancelled.";
                 AppLogger.Log("Save configuration cancelled by user.");
-                return false; // User cancelled SaveFileDialog
+                return false;
             }
         }
-        // Helper method to transform a point (used for DxfInsert)
+
         private DxfPoint TransformPoint(DxfPoint point, DxfPoint location, double xScale, double yScale, double rotationDegrees)
         {
-            // Apply scaling
             double scaledX = point.X * xScale;
             double scaledY = point.Y * yScale;
 
-            // Apply rotation (around block's local origin 0,0)
             double rotationRadians = rotationDegrees * Math.PI / 180.0;
             double cosR = Math.Cos(rotationRadians);
             double sinR = Math.Sin(rotationRadians);
@@ -3206,33 +2618,23 @@ namespace RobTeach.Views
             double rotatedX = scaledX * cosR - scaledY * sinR;
             double rotatedY = scaledX * sinR + scaledY * cosR;
 
-            // Apply translation (to insert.Location)
-            // Assuming ZScaleFactor is 1.0 as it's not directly available in DxfInsert in IxMilia.Dxf
-            // The Z coordinate of the block entity is added to the insert's Z location.
             return new DxfPoint(rotatedX + location.X, rotatedY + location.Y, point.Z * 1.0 + location.Z);
         }
 
-        // Helper to get bounds of transformed corners of a local bounding box
         private (double minX, double minY, double maxX, double maxY)? GetTransformedBounds(
             (double minX, double minY, double maxX, double maxY) localBounds,
             DxfPoint location, double xScale, double yScale, double rotationDegrees)
         {
-            // Define the four corner points of the local bounding box in 2D (Z is ignored for transformation of bounds)
             DxfPoint c1 = new DxfPoint(localBounds.minX, localBounds.minY, 0);
             DxfPoint c2 = new DxfPoint(localBounds.maxX, localBounds.minY, 0);
             DxfPoint c3 = new DxfPoint(localBounds.minX, localBounds.maxY, 0);
             DxfPoint c4 = new DxfPoint(localBounds.maxX, localBounds.maxY, 0);
 
-            // Transform each corner point
-            // Note: The Z coordinate of the original local bounds is not used here,
-            // as we are transforming a 2D bounding box. The Z of the insert location
-            // will be added by TransformPoint, but the resulting bounds are still 2D (minX, minY, maxX, maxY).
             DxfPoint t1 = TransformPoint(c1, location, xScale, yScale, rotationDegrees);
             DxfPoint t2 = TransformPoint(c2, location, xScale, yScale, rotationDegrees);
             DxfPoint t3 = TransformPoint(c3, location, xScale, yScale, rotationDegrees);
             DxfPoint t4 = TransformPoint(c4, location, xScale, yScale, rotationDegrees);
 
-            // Find the min/max of the transformed X and Y coordinates
             double resultMinX = Math.Min(Math.Min(t1.X, t2.X), Math.Min(t3.X, t4.X));
             double resultMinY = Math.Min(Math.Min(t1.Y, t2.Y), Math.Min(t3.Y, t4.Y));
             double resultMaxX = Math.Max(Math.Max(t1.X, t2.X), Math.Max(t3.X, t4.X));
@@ -3245,7 +2647,7 @@ namespace RobTeach.Views
         {
             if (!isConfigurationDirty)
             {
-                return true; // No unsaved changes, proceed.
+                return true;
             }
 
             MessageBoxResult result = MessageBox.Show(
@@ -3257,24 +2659,22 @@ namespace RobTeach.Views
             switch (result)
             {
                 case MessageBoxResult.Yes:
-                    // PerformSaveOperation() will be implemented in a later step.
-                    // Assume it returns true if save was successful, false if user cancelled or error.
                     bool saveSuccess = PerformSaveOperation();
                     if (saveSuccess)
                     {
-                        isConfigurationDirty = false; // Reset dirty flag only if save was successful
-                        return true; // Proceed with the original action
+                        isConfigurationDirty = false;
+                        return true;
                     }
                     else
                     {
-                        return false; // Save failed or was cancelled, so cancel the original action
+                        return false;
                     }
                 case MessageBoxResult.No:
-                    return true; // User chose not to save, proceed with the original action
+                    return true;
                 case MessageBoxResult.Cancel:
-                    return false; // User cancelled the original action
+                    return false;
                 default:
-                    return false; // Should not happen
+                    return false;
             }
         }
 
@@ -3323,9 +2723,6 @@ namespace RobTeach.Views
                     return centerMatch && radiusMatch;
 
                 case DxfArc arc1 when entity2 is DxfArc arc2:
-                    // TODO: Robust angle comparison (normalize to 0-360, handle wrap-around)
-                    // For now, using modulo which is not perfectly robust for all cases like 0 vs 360.
-                    // A better way: convert angles to vectors or check if one angle is equivalent to other + k*360.
                     double normalizedStartAngle1 = (arc1.StartAngle % 360 + 360) % 360;
                     double normalizedEndAngle1 = (arc1.EndAngle % 360 + 360) % 360;
                     double normalizedStartAngle2 = (arc2.StartAngle % 360 + 360) % 360;
@@ -3349,8 +2746,6 @@ namespace RobTeach.Views
                     {
                         var v1 = poly1.Vertices[i];
                         var v2 = poly2.Vertices[i];
-                        // LwPolyline vertices are DxfLwPolylineVertex, which have X, Y, Bulge. Z is from polyline's Elevation.
-                        // Using PointEquals for X,Y comparison by creating temporary DxfPoints.
                         bool xyMatch = PointEquals(new DxfPoint(v1.X, v1.Y, 0), new DxfPoint(v2.X, v2.Y, 0), tolerance);
                         bool bulgeMatch = Math.Abs(v1.Bulge - v2.Bulge) < tolerance;
                         Debug.WriteLine($"[DEBUG] LWPolylineCompare: V{i} P1=({v1.X},{v1.Y},B={v1.Bulge}) | P2=({v2.X},{v2.Y},B={v2.Bulge}) | XYMatch={xyMatch}, BulgeMatch={bulgeMatch}");
@@ -3360,7 +2755,6 @@ namespace RobTeach.Views
                         }
                     }
                     return true;
-                // TODO: Add other entity types as needed
                 default:
                     Debug.WriteLine($"[WARNING] AreEntitiesGeometricallyEquivalent: Unhandled entity type {entity1.GetType().Name} for comparison.");
                     return false;
@@ -3376,25 +2770,15 @@ namespace RobTeach.Views
             }
 
             Debug.WriteLine($"[DEBUG] ReconcileTrajectoryEntities: Starting. Document has {currentDoc.Entities.Count()} entities.");
-            // Debug.WriteLine("[JULES_DEBUG] ReconcileTrajectoryEntities: Entering method.");
 
-            // Create a list of available entities from the document to "consume" as they are matched
-            // This helps handle cases where multiple identical geometric entities might exist in the DXF,
-            // ensuring each trajectory maps to a unique live entity if possible.
             List<DxfEntity> availableDocEntities = new List<DxfEntity>(currentDoc.Entities);
 
             foreach (var pass in config.SprayPasses)
             {
                 if (pass.Trajectories == null)
                 {
-                    // Debug.WriteLine($"[JULES_DEBUG] ReconcileTrajectoryEntities: Pass '{pass.PassName}' has null trajectories. Skipping.");
                     continue;
                 }
-                // Debug.WriteLine($"[JULES_DEBUG] ReconcileTrajectoryEntities: Processing pass '{pass.PassName}'. Initial trajectory order:");
-                // for(int k=0; k < pass.Trajectories.Count; k++)
-                // {
-                //     Debug.WriteLine($"[JULES_DEBUG]   Pre-Reconcile: Pass[{pass.PassName}]-Trajectory[{k}]: {pass.Trajectories[k].ToString()}");
-                // }
 
                 for (int i = 0; i < pass.Trajectories.Count; i++)
                 {
@@ -3420,38 +2804,21 @@ namespace RobTeach.Views
 
                     if (matchedEntity != null)
                     {
-                        trajectory.OriginalDxfEntity = matchedEntity; // Update reference to the live entity from the document
-                        // availableDocEntities.RemoveAt(matchedEntityIndexInAvailableList); // Allow re-matching for shared entities across passes
+                        trajectory.OriginalDxfEntity = matchedEntity;
                         Debug.WriteLine($"[DEBUG] ReconcileTrajectoryEntities: Reconciled trajectory entity: {matchedEntity.GetType().Name} (Index in availableDocEntities was {matchedEntityIndexInAvailableList}, not removing).");
                     }
                     else
                     {
-                        // If no match, the trajectory.OriginalDxfEntity remains the deserialized instance.
-                        // Highlighting will likely fail for this specific entity.
                         Debug.WriteLine($"[WARNING] ReconcileTrajectoryEntities: Could not find a matching live entity for deserialized {trajectory.OriginalDxfEntity.GetType().Name}.");
                     }
                 }
-                // Debug.WriteLine($"[JULES_DEBUG] ReconcileTrajectoryEntities: Finished processing pass '{pass.PassName}'. Final trajectory order for this pass:");
-                // for(int k=0; k < pass.Trajectories.Count; k++)
-                // {
-                //     Debug.WriteLine($"[JULES_DEBUG]   Post-Reconcile: Pass[{pass.PassName}]-Trajectory[{k}]: {pass.Trajectories[k].ToString()}");
-                // }
             }
             Debug.WriteLine("[DEBUG] ReconcileTrajectoryEntities: Finished.");
-            // Debug.WriteLine("[JULES_DEBUG] ReconcileTrajectoryEntities: Exiting method.");
         }
 
-
-        /// <summary>
-        /// Calculates the bounding box of an arc segment defined by two points and a bulge value.
-        /// </summary>
-        /// <param name="p1">Start point of the arc segment.</param>
-        /// <param name="p2">End point of the arc segment.</param>
-        /// <param name="bulge">Bulge value. Positive for CCW arc, negative for CW.</param>
-        /// <returns>A Rect representing the bounding box of the arc segment, or Rect.Empty if calculation fails.</returns>
         private Rect GetArcSegmentBoundsFromBulge(Point p1, Point p2, double bulge)
         {
-            if (Math.Abs(bulge) < 1e-9) // Treat as a straight line segment
+            if (Math.Abs(bulge) < 1e-9)
             {
                 return new Rect(p1, p2);
             }
@@ -3461,97 +2828,62 @@ namespace RobTeach.Views
             double chordLengthSquared = dx * dx + dy * dy;
             double chordLength = Math.Sqrt(chordLengthSquared);
 
-            if (chordLength < 1e-9) // Points are coincident
+            if (chordLength < 1e-9)
             {
                 return new Rect(p1, p2);
             }
 
-            // Angle of the chord vector
             double chordAngle = Math.Atan2(dy, dx);
 
-            // Included angle of the arc segment (theta)
-            // bulge = tan(theta / 4) ==> theta = 4 * atan(bulge)
             double includedAngle = 4.0 * Math.Atan(bulge);
 
-            // Radius of the arc
-            // R = C / (2 * sin(theta / 2))
             double radius = chordLength / (2.0 * Math.Sin(includedAngle / 2.0));
-            if (double.IsInfinity(radius) || double.IsNaN(radius)) return new Rect(p1, p2); // Should be caught by bulge or chord checks
+            if (double.IsInfinity(radius) || double.IsNaN(radius)) return new Rect(p1, p2);
 
-            // Arc center calculation
-            // Midpoint of the chord
             Point midPointChord = new Point(p1.X + dx / 2.0, p1.Y + dy / 2.0);
 
-            // Distance from chord midpoint to arc center (h)
-            // h = R * cos(theta/2) or sqrt(R^2 - (C/2)^2)
             double h = radius * Math.Cos(includedAngle / 2.0);
-            // If bulge > 0 (CCW), center is to the "left" of chord vector P1->P2
-            // If bulge < 0 (CW), center is to the "right"
-            // The sign of bulge also affects the sign of 'h' in some formulations, here h is distance.
-            // We need to adjust the perpendicular direction based on bulge.
 
-            double perpDx = -dy / chordLength; // Normalized perpendicular vector component
-            double perpDy = dx / chordLength;  // Normalized perpendicular vector component
+            double perpDx = -dy / chordLength;
+            double perpDy = dx / chordLength;
 
-            // For CCW arc (bulge > 0), center is (midPoint.X - h * perpDx_normalized, midPoint.Y - h * perpDy_normalized)
-            // where perp vector is (-dy, dx).
-            // If bulge is negative, the center is on the other side.
-            // Simplified: sagitta vector direction depends on bulge.
-            // Using a common formula: Pc = Pm - (R*cos(theta/2)) * PerpendicularNormalized(V_chord) * sign(bulge)
-            // Let's use a more direct center finding:
-            // Angle from midpoint of chord to center is chordAngle - PI/2 (for CCW) or + PI/2 (for CW)
-            // This 'h' can be thought of as signed based on bulge for offset direction
-            double offsetFactor = h * Math.Sign(bulge); // This might be incorrect, h is distance, sign of bulge defines concavity
+            double offsetFactor = h * Math.Sign(bulge);
 
             Point center = new Point(
-                midPointChord.X - offsetFactor * (dy / chordLength), // perp component X scaled by h
-                midPointChord.Y + offsetFactor * (dx / chordLength)  // perp component Y scaled by h
+                midPointChord.X - offsetFactor * (dy / chordLength),
+                midPointChord.Y + offsetFactor * (dx / chordLength)
             );
 
-            // Start and end angles relative to the arc center
             double startAngle = Math.Atan2(p1.Y - center.Y, p1.X - center.X);
             double endAngle = Math.Atan2(p2.Y - center.Y, p2.Y - center.Y);
 
-            // Normalize angles to be [0, 2*PI)
-            // startAngle = (startAngle + 2 * Math.PI) % (2 * Math.PI);
-            // endAngle = (endAngle + 2 * Math.PI) % (2 * Math.PI);
-
-            // Determine sweep direction and adjust endAngle for full sweep
-            // If bulge < 0, arc is CW. If bulge > 0, arc is CCW.
-            // We want to sweep from startAngle to endAngle in the direction of the bulge.
-
-            if (bulge < 0) // Clockwise
+            if (bulge < 0)
             {
                 if (endAngle > startAngle)
-                    startAngle += 2 * Math.PI; // Ensure sweep is CW
+                    startAngle += 2 * Math.PI;
             }
-            else // Counter-clockwise
+            else
             {
                 if (endAngle < startAngle)
-                    endAngle += 2 * Math.PI; // Ensure sweep is CCW
+                    endAngle += 2 * Math.PI;
             }
 
-            // Initialize bounding box with start and end points
             double minX = Math.Min(p1.X, p2.X);
             double minY = Math.Min(p1.Y, p2.Y);
             double maxX = Math.Max(p1.X, p2.X);
             double maxY = Math.Max(p1.Y, p2.Y);
 
-            // Check cardinal points (0, 90, 180, 270 degrees in circle's coordinate system)
-            // if they fall within the arc segment.
             Action<double> checkAngle = (angle) =>
             {
                 bool angleInSweep;
-                if (bulge > 0) // CCW
+                if (bulge > 0)
                 {
-                    // Normalize angle to be relative to startAngle for CCW sweep
                     double normalizedAngle = angle;
                     while (normalizedAngle < startAngle) normalizedAngle += 2 * Math.PI;
                     angleInSweep = normalizedAngle >= startAngle && normalizedAngle <= endAngle;
                 }
-                else // CW
+                else
                 {
-                    // Normalize angle to be relative to startAngle for CW sweep
                     double normalizedAngle = angle;
                     while (normalizedAngle > startAngle) normalizedAngle -= 2 * Math.PI;
                     angleInSweep = normalizedAngle <= startAngle && normalizedAngle >= endAngle;
@@ -3568,21 +2900,16 @@ namespace RobTeach.Views
                 }
             };
 
-            checkAngle(0);                         // Point at positive X-axis from center
-            checkAngle(Math.PI / 2.0);             // Point at positive Y-axis from center
-            checkAngle(Math.PI);                   // Point at negative X-axis from center
-            checkAngle(3.0 * Math.PI / 2.0);       // Point at negative Y-axis from center
+            checkAngle(0);
+            checkAngle(Math.PI / 2.0);
+            checkAngle(Math.PI);
+            checkAngle(3.0 * Math.PI / 2.0);
 
-            if (minX > maxX || minY > maxY) return Rect.Empty; // Should not happen with valid inputs
+            if (minX > maxX || minY > maxY) return Rect.Empty;
 
             return new Rect(new Point(minX, minY), new Point(maxX, maxY));
         }
 
-        /// <summary>
-        /// Helper method to get the bounding box of a DxfEntity as a Rect.
-        /// </summary>
-        /// <param name="entity">The DXF entity.</param>
-        /// <returns>A Rect representing the entity's bounding box in DXF coordinates, or Rect.Empty if bounds cannot be determined.</returns>
         private Rect GetDxfEntityRect(DxfEntity entity)
         {
             if (entity == null)
@@ -3622,7 +2949,6 @@ namespace RobTeach.Views
             string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
             string logDirectory = Path.Combine(baseDirectory, "log");
 
-            // Ensure the log directory exists
             if (!Directory.Exists(logDirectory))
             {
                 Directory.CreateDirectory(logDirectory);
@@ -3633,15 +2959,13 @@ namespace RobTeach.Views
 
             using (StreamWriter writer = new StreamWriter(dataFilePath))
             {
-                // 1. Total Number of Passes
                 writer.WriteLine(((float)config.SprayPasses.Count).ToString("F3"));
 
                 int passIndex = 0;
                 foreach (var pass in config.SprayPasses)
                 {
-                    passIndex++; // For user display or if pass index is needed in file, though not specified
+                    passIndex++;
 
-                    // 2.a. Number of Primitives in Pass
                     writer.WriteLine(((float)pass.Trajectories.Count).ToString("F3"));
 
                     int primitiveIndexInPass = 0;
@@ -3649,58 +2973,46 @@ namespace RobTeach.Views
                     {
                         primitiveIndexInPass++;
 
-                        // 2.b.i. Primitive Index
                         writer.WriteLine(((float)primitiveIndexInPass).ToString("F3"));
 
-                        // 2.b.ii. Primitive Type
                         float primitiveType = 0.0f;
                         if (trajectory.PrimitiveType == "Line") primitiveType = 1.0f;
                         else if (trajectory.PrimitiveType == "Circle") primitiveType = 2.0f;
                         else if (trajectory.PrimitiveType == "Arc") primitiveType = 3.0f;
                         writer.WriteLine(primitiveType.ToString("F3"));
 
-                        // 2.b.iii. Upper Nozzle Gas
                         writer.WriteLine((trajectory.UpperNozzleGasOn ? 11.0f : 10.0f).ToString("F3"));
-                        // 2.b.iv. Upper Nozzle Liquid
                         writer.WriteLine((trajectory.UpperNozzleLiquidOn ? 12.0f : 10.0f).ToString("F3"));
-                        // 2.b.v. Lower Nozzle Gas
                         writer.WriteLine((trajectory.LowerNozzleGasOn ? 21.0f : 20.0f).ToString("F3"));
-                        // 2.b.vi. Lower Nozzle Liquid
                         writer.WriteLine((trajectory.LowerNozzleLiquidOn ? 22.0f : 20.0f).ToString("F3"));
 
-                        // 2.b.vii. End Effector Speed (Calculated: Length / Runtime)
                         double lengthInMeters = TrajectoryUtils.CalculateTrajectoryLength(trajectory);
                         double currentRuntime = trajectory.Runtime;
                         float speedForRobot = 0.0f;
 
-                        if (lengthInMeters > 0.00001) // If length is significant
+                        if (lengthInMeters > 0.00001)
                         {
-                            if (currentRuntime > 0.00001) // If runtime is significant
+                            if (currentRuntime > 0.00001)
                             {
                                 speedForRobot = (float)(lengthInMeters / currentRuntime);
                             }
-                            // Else: runtime is zero/tiny, length is not. Speed remains 0.0f (implying problem or stop)
                         }
-                        // Else: length is zero/tiny. Speed remains 0.0f.
                         writer.WriteLine(speedForRobot.ToString("F3"));
 
-                        // 2.b.viii. Primitive Geometry Data
                         if (trajectory.PrimitiveType == "Line")
                         {
-                            WritePointData(writer, trajectory.LineStartPoint); // Rx, Ry, Rz default to 0
-                            WritePointData(writer, trajectory.LineEndPoint);   // Rx, Ry, Rz default to 0
+                            WritePointData(writer, trajectory.LineStartPoint);
+                            WritePointData(writer, trajectory.LineEndPoint);
                         }
                         else if (trajectory.PrimitiveType == "Arc")
                         {
                             if (trajectory.ArcPoint1 == null || trajectory.ArcPoint2 == null || trajectory.ArcPoint3 == null)
                             {
-                                // Write placeholder zeros if arc points are somehow null
-                                for(int i=0; i < 3 * 6; i++) writer.WriteLine(0.0f.ToString("F3")); // 3 points * 6 floats
+                                for(int i=0; i < 3 * 6; i++) writer.WriteLine(0.0f.ToString("F3"));
                             }
                             else
                             {
                                 WriteTrajectoryPointWithAnglesData(writer, trajectory.ArcPoint1);
-                                // The second point for an Arc is ArcPoint2 (midpoint on circumference)
                                 WriteTrajectoryPointWithAnglesData(writer, trajectory.ArcPoint2);
                                 WriteTrajectoryPointWithAnglesData(writer, trajectory.ArcPoint3);
                             }
@@ -3709,37 +3021,32 @@ namespace RobTeach.Views
                         {
                              if (trajectory.CirclePoint1 == null || trajectory.OriginalCircleCenter == null || trajectory.CirclePoint3 == null)
                              {
-                                // Write placeholder zeros if circle points are somehow null
-                                for(int i=0; i < 3 * 6; i++) writer.WriteLine(0.0f.ToString("F3")); // 3 points * 6 floats
+                                for(int i=0; i < 3 * 6; i++) writer.WriteLine(0.0f.ToString("F3"));
                              }
                              else
                              {
                                 WriteTrajectoryPointWithAnglesData(writer, trajectory.CirclePoint1);
-                                // The second point for a Circle is CirclePoint2 (a point on circumference)
                                 WriteTrajectoryPointWithAnglesData(writer, trajectory.CirclePoint2);
                                 WriteTrajectoryPointWithAnglesData(writer, trajectory.CirclePoint3);
                              }
                         }
-                        else // Unknown primitive type
+                        else
                         {
-                            // Write placeholder zeros for geometry
-                             for(int i=0; i < 2 * 6; i++) writer.WriteLine(0.0f.ToString("F3")); // Default to 2 points * 6 floats like a line
+                             for(int i=0; i < 2 * 6; i++) writer.WriteLine(0.0f.ToString("F3"));
                         }
 
-                        // 2.b.ix. Reserved Values
                         writer.WriteLine(0.0f.ToString("F3"));
                         writer.WriteLine(0.0f.ToString("F3"));
                         writer.WriteLine(0.0f.ToString("F3"));
                     }
                 }
             }
-            return dataFilePath; // Return the actual path where the file is saved
+            return dataFilePath;
         }
 
         private void StartTestRunButton_Click(object sender, RoutedEventArgs e)
         {
-            // Determine selected speed mode for the confirmation message
-            string selectedSpeedModeName = "Slow"; // Default
+            string selectedSpeedModeName = "Slow";
             if (StandardSpeedRadioButton.IsChecked == true)
             {
                 selectedSpeedModeName = "Standard";
@@ -3765,7 +3072,6 @@ namespace RobTeach.Views
                 return;
             }
 
-            // Check Robot Status (Address 1000)
             ushort robotStatusAddress = 1000;
             ModbusReadInt16Result statusResult = _modbusService.ReadHoldingRegisterInt16(robotStatusAddress);
 
@@ -3778,7 +3084,7 @@ namespace RobTeach.Views
             }
 
             short robotStatus = statusResult.Value;
-            if (robotStatus != 1) // 1 means stopped/ready
+            if (robotStatus != 1)
             {
                 string msg = $"Cannot start test run: Robot is not in a stopped/ready state (Current status at {robotStatusAddress}: {robotStatus}).";
                 AppLogger.Log(msg, LogLevel.Warning);
@@ -3786,14 +3092,13 @@ namespace RobTeach.Views
                 return;
             }
 
-            // Determine selected speed mode and set it (Address 1001)
             ushort speedModeAddress = 1001;
-            int speedModeValue = 11; // Default to Slow Speed (11)
+            int speedModeValue = 11;
             string speedModeName = "Slow";
 
             if (StandardSpeedRadioButton.IsChecked == true)
             {
-                speedModeValue = 22; // Standard Speed (22)
+                speedModeValue = 22;
                 speedModeName = "Standard";
             }
 
@@ -3808,10 +3113,8 @@ namespace RobTeach.Views
                 return;
             }
 
-            // Add 50ms delay
             System.Threading.Thread.Sleep(50);
 
-            // Trigger Test Run (Address 1002)
             ushort triggerAddress = 1002;
             short triggerValue = 33;
             AppLogger.Log($"Triggering Test Run (Value: {triggerValue}) at address {triggerAddress}.");
@@ -3838,15 +3141,12 @@ namespace RobTeach.Views
                 return Rect.Empty;
             }
 
-            // Create transformation matrix
             var transform = new Matrix();
             
-            // Apply transformations in order: scale, rotate, translate
             transform.Scale(scaleX, scaleY);
             transform.Rotate(rotationDegrees);
             transform.Translate(insertPoint.X, insertPoint.Y);
 
-            // Transform the corners of the original bounds
             var points = new[]
             {
                 new System.Windows.Point(originalBounds.Left, originalBounds.Top),
@@ -3855,10 +3155,8 @@ namespace RobTeach.Views
                 new System.Windows.Point(originalBounds.Left, originalBounds.Bottom)
             };
 
-            // Transform all points
             transform.Transform(points);
 
-            // Calculate new bounds
             double minX = points.Min(p => p.X);
             double minY = points.Min(p => p.Y);
             double maxX = points.Max(p => p.X);
@@ -3916,7 +3214,6 @@ namespace RobTeach.Views
                 return new Rect(insert.Location.X, insert.Location.Y, 0, 0);
             }
 
-            // Transform the block bounds according to the insert's properties
             return GetTransformedBounds(blockBounds, insert.Location, insert.XScaleFactor, insert.YScaleFactor, insert.Rotation);
         }
 
@@ -3942,7 +3239,6 @@ namespace RobTeach.Views
                     path.Fill = Brushes.Transparent;
                 }
 
-                // Add event handler and map to entity
                 if (_currentDxfDocument != null && entityIndex < _currentDxfDocument.Entities.Count())
                 {
                     var entity = _currentDxfDocument.Entities.ElementAt(entityIndex);
@@ -3958,11 +3254,9 @@ namespace RobTeach.Views
                 CadCanvas.Children.Add(shape);
             }
 
-            // Force layout update
             CadCanvas.UpdateLayout();
             CadCanvas.InvalidateVisual();
 
-            // Update bounding box
             if (nonNullShapes.Any())
             {
                 PerformFitToView();
