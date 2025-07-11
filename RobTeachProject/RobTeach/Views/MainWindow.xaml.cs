@@ -1640,28 +1640,40 @@ namespace RobTeach.Views
             transformGroup.Children.Add(new TranslateTransform(translateX, translateY));
 
             AppLogger.Log("=== Final Transform State ===", LogLevel.Info);
-            AppLogger.Log($"Scale: ({scale:F4}, {-scale:F4})", LogLevel.Info);
-            AppLogger.Log($"Translation: ({translateX:F2}, {translateY:F2})", LogLevel.Info);
+            AppLogger.Log($"Scale: ({_scaleTransform.ScaleX:F4}, {_scaleTransform.ScaleY:F4})", LogLevel.Info);
+            AppLogger.Log($"Translation: ({_translateTransform.X:F2}, {_translateTransform.Y:F2})", LogLevel.Info);
 
             // Calculate and log viewport bounds in DXF coordinates
-            double viewportLeft = -translateX / scale;
-            double viewportRight = (canvasWidth - translateX) / scale;
-            double viewportBottom = -(translateY + canvasHeight) / scale;
-            double viewportTop = -translateY / scale;
+            // Ensure scale is not zero to prevent division by zero errors.
+            // Use Math.Abs for scale in viewport calculation as _scaleTransform.ScaleY is negative.
+            double absScale = Math.Abs(_scaleTransform.ScaleX); // Assuming ScaleX and ScaleY have same absolute value for uniform scaling
+            if (absScale < 1e-9) absScale = 1e-9; // Prevent division by zero
 
-            AppLogger.Log("=== Viewport in DXF Coordinates ===", LogLevel.Info);
-            AppLogger.Log($"X range: {viewportLeft:F2} to {viewportRight:F2}", LogLevel.Info);
-            AppLogger.Log($"Y range: {viewportBottom:F2} to {viewportTop:F2}", LogLevel.Info);
+            double viewportLeft = -_translateTransform.X / absScale;
+            double viewportRight = (canvasWidth - _translateTransform.X) / absScale;
+            // For viewport Y, remember that _scaleTransform.ScaleY is negative.
+            // y_screen = y_dxf * scaleY + translateY  => y_dxf = (y_screen - translateY) / scaleY
+            // Viewport Top on screen is y_screen = 0. Viewport Bottom on screen is y_screen = canvasHeight.
+            double viewportDxfTop = (0 - _translateTransform.Y) / _scaleTransform.ScaleY;
+            double viewportDxfBottom = (canvasHeight - _translateTransform.Y) / _scaleTransform.ScaleY;
+            // Since WPF Y is down, and DXF Y is up, and scaleY is negative:
+            // A smaller screen Y (top of screen) corresponds to a larger DXF Y.
+            // A larger screen Y (bottom of screen) corresponds to a smaller DXF Y.
+            // So, viewportTop_DXF will be max(viewportDxfTop, viewportDxfBottom) and viewportBottom_DXF will be min.
 
-            AppLogger.Log("=== Canvas Information ===", LogLevel.Info);
+            AppLogger.Log("=== Viewport in DXF Coordinates (approximate, based on canvas edges) ===", LogLevel.Info);
+            AppLogger.Log($"X range: {Math.Min(viewportLeft, viewportRight):F2} to {Math.Max(viewportLeft, viewportRight):F2}", LogLevel.Info);
+            AppLogger.Log($"Y range: {Math.Min(viewportDxfTop, viewportDxfBottom):F2} to {Math.Max(viewportDxfTop, viewportDxfBottom):F2}", LogLevel.Info);
+
+
+            AppLogger.Log("=== Canvas Information (End of PerformFitToView) ===", LogLevel.Info);
             AppLogger.Log($"Canvas Size: {canvasWidth:F2} x {canvasHeight:F2}", LogLevel.Info);
-            AppLogger.Log($"Final Scale: ({scale:F2}, {-scale:F2})", LogLevel.Info);
-            AppLogger.Log($"Final Translation: ({translateX:F2}, {translateY:F2})", LogLevel.Info);
+            AppLogger.Log($"Applied Scale to _scaleTransform: ({_scaleTransform.ScaleX:F2}, {_scaleTransform.ScaleY:F2})", LogLevel.Info);
+            AppLogger.Log($"Applied Translation to _translateTransform: ({_translateTransform.X:F2}, {_translateTransform.Y:F2})", LogLevel.Info);
 
-            foreach (UIElement element in CadCanvas.Children)
-            {
-                element.RenderTransform = transformGroup;
-            }
+            // The problematic loop has been removed.
+            // Updates to _scaleTransform and _translateTransform directly affect CadCanvas.RenderTransform
+            // because _transformGroup (which is CadCanvas.RenderTransform) contains these specific instances.
         }
 
         /// <summary>
