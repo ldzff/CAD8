@@ -37,7 +37,7 @@
 
         <!-- CAD Canvas Area -->
         <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Margin="5" Background="{StaticResource CanvasContainerBackgroundBrush}">
-            <Canvas x:Name="CadCanvas" ClipToBounds="True" 
+            <Canvas x:Name="CadCanvas" ClipToBounds="False"
                     HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                     Background="{StaticResource CanvasBackgroundBrush}"
                     Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Border}}"
