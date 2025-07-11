@@ -1706,13 +1706,13 @@ namespace RobTeach.Views
                 AppLogger.Log($"OnCadEntityClicked: Clicked shape Tag: {tag ?? "N/A"}", LogLevel.Debug);
             }
 
-            Point clickPosCanvas = e.GetPosition(CadCanvas);
-            Point clickPosDxf = Point.InvalidatePoint;
+            Point clickPosCanvasLocal = e.GetPosition(CadCanvas);
+            Point clickPosDxf = new Point(double.NaN, double.NaN); // Corrected initialization
             if (_transformGroup != null && _transformGroup.Inverse != null)
             {
-                clickPosDxf = _transformGroup.Inverse.Transform(clickPosCanvas);
+                clickPosDxf = _transformGroup.Inverse.Transform(clickPosCanvasLocal); // Used corrected variable name
             }
-            AppLogger.Log($"OnCadEntityClicked: RawPos=({clickPosCanvas.X:F2},{clickPosCanvas.Y:F2}), DxfPos=({clickPosDxf.X:F2},{clickPosDxf.Y:F2})", LogLevel.Debug);
+            AppLogger.Log($"OnCadEntityClicked: RawPos=({clickPosCanvasLocal.X:F2},{clickPosCanvasLocal.Y:F2}), DxfPos=({clickPosDxf.X:F2},{clickPosDxf.Y:F2})", LogLevel.Debug); // Used corrected variable name
 
             // Original Trace.WriteLine and Debug.WriteLine can be kept or removed if AppLogger is sufficient
             Trace.WriteLine("++++ OnCadEntityClicked Fired (Legacy Trace) ++++");
@@ -2756,7 +2756,7 @@ namespace RobTeach.Views
         private void CadCanvas_MouseDown(object sender, MouseButtonEventArgs e)
         {
             Point clickPosCanvas = e.GetPosition(CadCanvas);
-            Point clickPosDxf = Point.InvalidatePoint; // Default to an invalid point
+            Point clickPosDxf = new Point(double.NaN, double.NaN); // Corrected initialization
 
             if (_transformGroup != null && _transformGroup.Inverse != null) // Ensure inverse is available
             {
